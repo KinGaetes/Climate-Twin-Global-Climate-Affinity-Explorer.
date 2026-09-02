@@ -3,4 +3,5 @@
 .season-scan-item b{color:#125667;font-size:10px}
 .season-scan-item span{min-width:0}
 .country-picker-map{height:auto;aspect-ratio:112/43}
+.country-picker-tooltip{position:fixed;z-index:90;max-width:220px;border:1px solid rgba(11,126,142,.3);border-radius:8px;background:rgba(247,255,252,.96);box-shadow:0 8px 22px rgba(8,57,67,.22);padding:6px 8px;color:#164c58;font-size:10px;font-weight:700;pointer-events:none}
 @media(max-width:720px){.season-scan-item{grid-template-columns:58px minmax(0,1fr)}}

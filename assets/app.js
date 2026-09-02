@@ -207,9 +207,14 @@ function areaLabel(){const scope=$("top-scope").value;if(scope==="global")return
 function updateVisibilityValue(){const mode=$("top-mode").value,input=$("top-value"),label=$("top-value-label");if(mode==="count"){label.textContent="Número de ciudades";input.min=1;input.max=10000;input.value=clamp(Math.round(Number(input.value)||250),1,10000);}else if(mode==="percentile"){label.textContent="Porcentaje superior";input.min=1;input.max=100;input.value=clamp(Math.round(Number(input.value)||1),1,100);}else{label.textContent="Afinidad mínima (%)";input.min=1;input.max=100;input.value=clamp(Math.round(Number(input.value)||75),1,100);}}
 function populateAreaOptions(){const select=$("top-area"),scope=$("top-scope").value,previous=select.value;if(scope==="global"){select.innerHTML='<option value="">Todo el mundo</option>';select.disabled=true;return;}if(!regionCatalog){select.innerHTML='<option value="">Cargando áreas…</option>';select.disabled=true;return;}const rows=scope==="continent"?regionCatalog.continents:scope==="subcontinent"?regionCatalog.subcontinents:regionCatalog.countries;select.innerHTML="";rows.forEach(row=>{const option=document.createElement("option");option.value=row.id;option.textContent=row.label;select.appendChild(option);});select.disabled=false;if(rows.some(row=>row.id===previous))select.value=previous;}
 function normalizeCountryText(value){return String(value||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim();}
-const COUNTRY_SHAPE_ALIASES={"united states":"united states of america","czechia":"czech republic","palestinian territory":"palestine","aland islands":"aland","the netherlands":"netherlands","u s virgin islands":"united states virgin islands","curacao":"curacao"};
+const COUNTRY_SHAPE_ALIASES={"united states":"united states of america","czechia":"czech republic","palestinian territory":"palestine","aland islands":"aland","the netherlands":"netherlands","u s virgin islands":"united states virgin islands","curacao":"curacao","brasil":"brazil"};
 function countryShapeKey(label){const key=normalizeCountryText(label).replace(/[^a-z0-9 ]/g," ").replace(/\s+/g," ").trim();return COUNTRY_SHAPE_ALIASES[key]||key;}
 function countryShapeFor(row){return countryShapeIndex.get(countryShapeKey(row?.label))||null;}
+function showCountryPickerTooltip(event,row){
+  let tip=$("country-picker-tooltip");if(!tip){tip=document.createElement("div");tip.id="country-picker-tooltip";tip.className="country-picker-tooltip";document.body.appendChild(tip);}
+  tip.textContent=`${row.label} - ${Number(row.city_count).toLocaleString("es-ES")} ciudades`;tip.style.left=`${Math.min(window.innerWidth-230,event.clientX+14)}px`;tip.style.top=`${Math.min(window.innerHeight-36,event.clientY+14)}px`;tip.classList.remove("hidden");
+}
+function hideCountryPickerTooltip(){$("country-picker-tooltip")?.classList.add("hidden");}
 async function loadCountryShapes(){
   try{
     const response=await fetch(new URL("./world-countries-50m.geojson",import.meta.url));if(!response.ok)throw new Error(`HTTP ${response.status}`);
@@ -288,14 +293,14 @@ function setupCountryPicker(side){
     input.addEventListener("keydown",event=>{if(event.key==="Enter"){event.preventDefault();chooseTypedCountry();}});
     select.addEventListener("change",()=>setStudyCountry(side,select.value));
     let drag=null,hoverId="";
-    canvas.addEventListener("pointerdown",event=>{drag={x:event.clientX,y:event.clientY,lon:countryPickerViews[side].lon,lat:countryPickerViews[side].lat,moved:false};canvas.setPointerCapture(event.pointerId);canvas.style.cursor="grabbing";});
+    canvas.addEventListener("pointerdown",event=>{hideCountryPickerTooltip();drag={x:event.clientX,y:event.clientY,lon:countryPickerViews[side].lon,lat:countryPickerViews[side].lat,moved:false};canvas.setPointerCapture(event.pointerId);canvas.style.cursor="grabbing";});
     canvas.addEventListener("pointermove",event=>{
       if(drag){const rect=canvas.getBoundingClientRect(),dx=(event.clientX-drag.x)*canvas.width/rect.width,dy=(event.clientY-drag.y)*canvas.height/rect.height;if(Math.abs(dx)+Math.abs(dy)>3)drag.moved=true;const start=countryPickerWorld(drag.lon,drag.lat,countryPickerViews[side].zoom),next=countryPickerLonLat(start.x-dx,start.y-dy,countryPickerViews[side].zoom);countryPickerViews[side].lon=next.lon;countryPickerViews[side].lat=clamp(next.lat,-80,80);drawCountryPickerMap(side);return;}
-      const row=countryAtMapPoint(side,event),nextHover=row?.id||"";canvas.style.cursor=row?"pointer":"grab";if(nextHover!==hoverId){hoverId=nextHover;if(row)note.textContent=`${row.label} - ${Number(row.city_count).toLocaleString("es-ES")} ciudades - clic para elegir`;drawCountryPickerMap(side,hoverId);}
+      const row=countryAtMapPoint(side,event),nextHover=row?.id||"";canvas.style.cursor=row?"pointer":"grab";if(row)showCountryPickerTooltip(event,row);else hideCountryPickerTooltip();if(nextHover!==hoverId){hoverId=nextHover;if(row)note.textContent=`${row.label} - ${Number(row.city_count).toLocaleString("es-ES")} ciudades - clic para elegir`;drawCountryPickerMap(side,hoverId);}
     });
     const finish=event=>{if(!drag)return;const wasDrag=drag.moved;drag=null;canvas.style.cursor="grab";if(!wasDrag){const row=countryAtMapPoint(side,event);if(row){setStudyCountry(side,row.id);return;}}drawCountryPickerMap(side);};
     canvas.addEventListener("pointerup",finish);canvas.addEventListener("pointercancel",finish);
-    canvas.addEventListener("pointerleave",()=>{if(!drag){hoverId="";canvas.style.cursor="grab";drawCountryPickerMap(side);}});
+    canvas.addEventListener("pointerleave",()=>{hideCountryPickerTooltip();if(!drag){hoverId="";canvas.style.cursor="grab";drawCountryPickerMap(side);}});
     canvas.addEventListener("wheel",event=>{event.preventDefault();countryPickerViews[side].zoom=clamp(countryPickerViews[side].zoom+(event.deltaY<0?.28:-.28),1.2,5.5);drawCountryPickerMap(side);},{passive:false});
     canvas.addEventListener("dblclick",event=>{event.preventDefault();countryPickerViews[side]={lon:0,lat:18,zoom:1.55};drawCountryPickerMap(side);});
   }
