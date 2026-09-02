@@ -12,6 +12,8 @@ let hoveredIdx = -1;
 const cityMetaCache = new Map();
 const countryPickerViews={left:{lon:0,lat:18,zoom:1.55},right:{lon:0,lat:18,zoom:1.55}};
 const countryPickerTiles=new Map();
+let countryShapes=null;
+const countryShapeIndex=new Map();
 let resolveWorkerReady; const workerReadyPromise = new Promise(resolve => { resolveWorkerReady = resolve; });
 let seq = 0, startupDone = false, rankingSeq = 0;
 const pending = new Map();
@@ -205,6 +207,17 @@ function areaLabel(){const scope=$("top-scope").value;if(scope==="global")return
 function updateVisibilityValue(){const mode=$("top-mode").value,input=$("top-value"),label=$("top-value-label");if(mode==="count"){label.textContent="Número de ciudades";input.min=1;input.max=10000;input.value=clamp(Math.round(Number(input.value)||250),1,10000);}else if(mode==="percentile"){label.textContent="Porcentaje superior";input.min=1;input.max=100;input.value=clamp(Math.round(Number(input.value)||1),1,100);}else{label.textContent="Afinidad mínima (%)";input.min=1;input.max=100;input.value=clamp(Math.round(Number(input.value)||75),1,100);}}
 function populateAreaOptions(){const select=$("top-area"),scope=$("top-scope").value,previous=select.value;if(scope==="global"){select.innerHTML='<option value="">Todo el mundo</option>';select.disabled=true;return;}if(!regionCatalog){select.innerHTML='<option value="">Cargando áreas…</option>';select.disabled=true;return;}const rows=scope==="continent"?regionCatalog.continents:scope==="subcontinent"?regionCatalog.subcontinents:regionCatalog.countries;select.innerHTML="";rows.forEach(row=>{const option=document.createElement("option");option.value=row.id;option.textContent=row.label;select.appendChild(option);});select.disabled=false;if(rows.some(row=>row.id===previous))select.value=previous;}
 function normalizeCountryText(value){return String(value||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim();}
+const COUNTRY_SHAPE_ALIASES={"united states":"united states of america","czechia":"czech republic","palestinian territory":"palestine","aland islands":"aland","the netherlands":"netherlands","u s virgin islands":"united states virgin islands","curacao":"curacao"};
+function countryShapeKey(label){const key=normalizeCountryText(label).replace(/[^a-z0-9 ]/g," ").replace(/\s+/g," ").trim();return COUNTRY_SHAPE_ALIASES[key]||key;}
+function countryShapeFor(row){return countryShapeIndex.get(countryShapeKey(row?.label))||null;}
+async function loadCountryShapes(){
+  try{
+    const response=await fetch(new URL("./world-countries-50m.geojson",import.meta.url));if(!response.ok)throw new Error(`HTTP ${response.status}`);
+    const geo=await response.json();countryShapes=geo.features||[];
+    countryShapes.forEach(feature=>{const p=feature.properties||{};[p.NAME_EN,p.NAME,p.ADMIN,p.NAME_LONG,p.FORMAL_EN].filter(Boolean).forEach(name=>countryShapeIndex.set(countryShapeKey(name),feature));});
+    drawCountryPickerMap("left");drawCountryPickerMap("right");
+  }catch(e){console.warn("Country silhouettes unavailable",e);}
+}
 function countryRowById(id){return regionCatalog?.countries.find(row=>row.id===String(id))||null;}
 function countryPickerWorld(lon,lat,zoom){
   const scale=256*Math.pow(2,zoom),safeLat=clamp(Number(lat)||0,-85,85)*Math.PI/180;
@@ -229,6 +242,21 @@ function countryPickerTile(tileZoom,x,y){
   }).then(blob=>createImageBitmap(blob)).then(image=>{pending.image=image;drawCountryPickerMap("left");drawCountryPickerMap("right");}).catch(()=>{countryPickerTiles.delete(key);});
   return pending;
 }
+function countryShapePolygons(geometry){return geometry?.type==="Polygon"?[geometry.coordinates]:geometry?.type==="MultiPolygon"?geometry.coordinates:[];}
+function traceCountryShape(ctx,side,feature){
+  const view=countryPickerViews[side],canvas=$(`study-country-${side}-map`),center=countryPickerWorld(view.lon,view.lat,view.zoom),world=256*Math.pow(2,view.zoom);
+  countryShapePolygons(feature.geometry).forEach(polygon=>polygon.forEach(ring=>{
+    let previousX=null;ring.forEach(([lon,lat],index)=>{const raw=countryPickerWorld(lon,lat,view.zoom),y=canvas.height/2+raw.y-center.y;let x=raw.x-center.x;if(previousX==null){while(x>world/2)x-=world;while(x<-world/2)x+=world;}else{while(x-previousX>world/2)x-=world;while(x-previousX<-world/2)x+=world;}previousX=x;x+=canvas.width/2;if(index)ctx.lineTo(x,y);else ctx.moveTo(x,y);});ctx.closePath();
+  }));
+}
+function pointInRing(point,ring){let inside=false;for(let i=0,j=ring.length-1;i<ring.length;j=i++){const [xi,yi]=ring[i],[xj,yj]=ring[j],cross=(yi>point.lat)!==(yj>point.lat)&&point.lon<(xj-xi)*(point.lat-yi)/(yj-yi)+xi;if(cross)inside=!inside;}return inside;}
+function countryShapeContains(feature,point){return countryShapePolygons(feature.geometry).some(polygon=>pointInRing(point,polygon[0]||[]));}
+function countryShapeFill(row,side,active,hover){
+  if(active)return side==="left"?"rgba(8,126,152,.82)":"rgba(231,122,56,.84)";
+  if(hover)return "rgba(255,250,202,.9)";
+  let hash=0;for(const char of row.label)hash=(hash*31+char.charCodeAt(0))>>>0;
+  return `hsla(${166+hash%92},54%,${54+hash%13}%,.62)`;
+}
 function drawCountryPickerMap(side,hoverId=""){
   const canvas=$(`study-country-${side}-map`);if(!canvas||!regionCatalog)return;
   const ctx=canvas.getContext("2d"),width=canvas.width,height=canvas.height,selectedId=$(`study-country-${side}`).value,view=countryPickerViews[side],tileZoom=Math.max(0,Math.floor(view.zoom)),tileScale=Math.pow(2,view.zoom-tileZoom),tileSize=256*tileScale,center=countryPickerWorld(view.lon,view.lat,view.zoom),left=center.x-width/2,top=center.y-height/2;
@@ -236,12 +264,14 @@ function drawCountryPickerMap(side,hoverId=""){
   const tileLeft=left/tileScale,tileTop=top/tileScale,startX=Math.floor(tileLeft/256),endX=Math.floor((tileLeft+width/tileScale)/256),startY=Math.floor(tileTop/256),endY=Math.floor((tileTop+height/tileScale)/256);
   for(let tx=startX;tx<=endX;tx++)for(let ty=startY;ty<=endY;ty++){const tile=countryPickerTile(tileZoom,tx,ty);if(tile?.image)ctx.drawImage(tile.image,(tx*256-tileLeft)*tileScale,(ty*256-tileTop)*tileScale,tileSize,tileSize);}
   ctx.fillStyle="rgba(7,70,82,.13)";ctx.fillRect(0,0,width,height);
-  regionCatalog.countries.forEach(row=>{if(row.lon==null||row.lat==null)return;const point=countryPickerScreenPoint(side,row.lon,row.lat);if(point.x<-10||point.x>width+10||point.y<-10||point.y>height+10)return;const active=row.id===selectedId,hover=row.id===hoverId;ctx.beginPath();ctx.arc(point.x,point.y,active?6:hover?4.8:Math.min(3.5,1.5+Math.log10(row.city_count||1)*.42),0,Math.PI*2);ctx.fillStyle=active?(side==="left"?"#087e98":"#e77a38"):hover?"#fff":"rgba(8,73,90,.68)";ctx.fill();if(active||hover){ctx.lineWidth=2;ctx.strokeStyle="#fff";ctx.stroke();}});
+  regionCatalog.countries.forEach(row=>{const shape=countryShapeFor(row);if(!shape)return;const active=row.id===selectedId,hover=row.id===hoverId;ctx.beginPath();traceCountryShape(ctx,side,shape);ctx.fillStyle=countryShapeFill(row,side,active,hover);ctx.fill("evenodd");ctx.lineWidth=active?1.8:hover?1.4:.65;ctx.strokeStyle=active||hover?"rgba(255,255,255,.96)":"rgba(12,77,91,.55)";ctx.stroke();});
+  regionCatalog.countries.forEach(row=>{if(countryShapeFor(row)||row.lon==null||row.lat==null)return;const point=countryPickerScreenPoint(side,row.lon,row.lat);if(point.x<-10||point.x>width+10||point.y<-10||point.y>height+10)return;const active=row.id===selectedId,hover=row.id===hoverId;ctx.beginPath();ctx.arc(point.x,point.y,active?6:hover?4.8:3,0,Math.PI*2);ctx.fillStyle=active?(side==="left"?"#087e98":"#e77a38"):hover?"#fff":"rgba(8,73,90,.68)";ctx.fill();if(active||hover){ctx.lineWidth=2;ctx.strokeStyle="#fff";ctx.stroke();}});
   ctx.fillStyle="rgba(255,255,255,.87)";ctx.fillRect(8,height-25,150,17);ctx.fillStyle="#285f6b";ctx.font="600 9px system-ui, sans-serif";ctx.fillText("Arrastra - rueda: zoom - doble clic: inicio",14,height-13);
   if(!hoverId){const selected=countryRowById(selectedId),note=$(`study-country-${side}-note`);if(selected&&note)note.textContent=`${Number(selected.city_count).toLocaleString("es-ES")} ciudades incluidas - arrastra o usa la rueda`;}
 }
 function countryAtMapPoint(side,event){
-  const canvas=$(`study-country-${side}-map`),rect=canvas.getBoundingClientRect(),x=(event.clientX-rect.left)*canvas.width/rect.width,y=(event.clientY-rect.top)*canvas.height/rect.height;let closest=null,best=Infinity;
+  const canvas=$(`study-country-${side}-map`),rect=canvas.getBoundingClientRect(),x=(event.clientX-rect.left)*canvas.width/rect.width,y=(event.clientY-rect.top)*canvas.height/rect.height,view=countryPickerViews[side],center=countryPickerWorld(view.lon,view.lat,view.zoom),geo=countryPickerLonLat(center.x+x-canvas.width/2,center.y+y-canvas.height/2,view.zoom);let closest=null,best=Infinity;
+  const shapeMatch=regionCatalog?.countries.find(row=>{const shape=countryShapeFor(row);return shape&&countryShapeContains(shape,geo);});if(shapeMatch)return shapeMatch;
   regionCatalog?.countries.forEach(row=>{if(row.lon==null||row.lat==null)return;const point=countryPickerScreenPoint(side,row.lon,row.lat),d=Math.hypot(point.x-x,point.y-y);if(d<best){best=d;closest=row;}});
   return best<=14?closest:null;
 }
@@ -257,15 +287,15 @@ function setupCountryPicker(side){
     input.addEventListener("change",chooseTypedCountry);
     input.addEventListener("keydown",event=>{if(event.key==="Enter"){event.preventDefault();chooseTypedCountry();}});
     select.addEventListener("change",()=>setStudyCountry(side,select.value));
-    let drag=null;
+    let drag=null,hoverId="";
     canvas.addEventListener("pointerdown",event=>{drag={x:event.clientX,y:event.clientY,lon:countryPickerViews[side].lon,lat:countryPickerViews[side].lat,moved:false};canvas.setPointerCapture(event.pointerId);canvas.style.cursor="grabbing";});
     canvas.addEventListener("pointermove",event=>{
       if(drag){const rect=canvas.getBoundingClientRect(),dx=(event.clientX-drag.x)*canvas.width/rect.width,dy=(event.clientY-drag.y)*canvas.height/rect.height;if(Math.abs(dx)+Math.abs(dy)>3)drag.moved=true;const start=countryPickerWorld(drag.lon,drag.lat,countryPickerViews[side].zoom),next=countryPickerLonLat(start.x-dx,start.y-dy,countryPickerViews[side].zoom);countryPickerViews[side].lon=next.lon;countryPickerViews[side].lat=clamp(next.lat,-80,80);drawCountryPickerMap(side);return;}
-      const row=countryAtMapPoint(side,event);canvas.style.cursor=row?"pointer":"grab";if(row){note.textContent=`${row.label} - ${Number(row.city_count).toLocaleString("es-ES")} ciudades - clic para elegir`;drawCountryPickerMap(side,row.id);}else drawCountryPickerMap(side);
+      const row=countryAtMapPoint(side,event),nextHover=row?.id||"";canvas.style.cursor=row?"pointer":"grab";if(nextHover!==hoverId){hoverId=nextHover;if(row)note.textContent=`${row.label} - ${Number(row.city_count).toLocaleString("es-ES")} ciudades - clic para elegir`;drawCountryPickerMap(side,hoverId);}
     });
     const finish=event=>{if(!drag)return;const wasDrag=drag.moved;drag=null;canvas.style.cursor="grab";if(!wasDrag){const row=countryAtMapPoint(side,event);if(row){setStudyCountry(side,row.id);return;}}drawCountryPickerMap(side);};
     canvas.addEventListener("pointerup",finish);canvas.addEventListener("pointercancel",finish);
-    canvas.addEventListener("pointerleave",()=>{if(!drag){canvas.style.cursor="grab";drawCountryPickerMap(side);}});
+    canvas.addEventListener("pointerleave",()=>{if(!drag){hoverId="";canvas.style.cursor="grab";drawCountryPickerMap(side);}});
     canvas.addEventListener("wheel",event=>{event.preventDefault();countryPickerViews[side].zoom=clamp(countryPickerViews[side].zoom+(event.deltaY<0?.28:-.28),1.2,5.5);drawCountryPickerMap(side);},{passive:false});
     canvas.addEventListener("dblclick",event=>{event.preventDefault();countryPickerViews[side]={lon:0,lat:18,zoom:1.55};drawCountryPickerMap(side);});
   }
@@ -379,10 +409,17 @@ function seasonalSentence(row,data){
   const rangeGap=(right.range==null||left.range==null)?"":` · diferencia de oscilación ${studyNumber(Math.abs(right.range-left.range))} °C`;
   return `${SEASON_LABELS[row.id]}: ${temperature}; afinidad ${row.score}%${rangeGap}.`;
 }
+function seasonQuickReading(row,data){
+  const left=row.thermal?.left||{},right=row.thermal?.right||{},delta=right.mean-left.mean,contrast=[...(row.domains||[])].sort((a,b)=>a.similarity_pct-b.similarity_pct)[0];
+  const temperature=!Number.isFinite(delta)?"temperatura estacional no disponible":Math.abs(delta)<.35?"temperaturas muy parecidas":`${delta>0?data.right.city_name:data.left.city_name} ${delta>0?"es":"es"} ${studyNumber(Math.abs(delta))} °C más cálida`;
+  const domain=contrast?`Contraste principal: ${contrast.label.toLowerCase()} (${contrast.similarity_pct}% de afinidad).`:"Sin segundo contraste comparable.";
+  return `${temperature}. ${domain}`;
+}
 function renderCityStudy(data){
   const panels=[data.left,data.right].map(city=>`<article class="study-city-card"><p class="eyebrow">${esc(city.country_name||"Urbe")}</p><h3>${esc(city.city_name)}</h3><p>${esc(city.admin1_name||"")}</p></article>`).join("");
   const domains=data.domains.map(row=>`<div class="domain-row"><span>${esc(row.label)}</span><b>${row.similarity_pct}%</b><i><em style="width:${row.similarity_pct}%"></em></i></div>`).join("");
   const seasons=data.seasons.map(row=>`<div class="season-row"><span>${SEASON_LABELS[row.id]}</span><i><em style="width:${row.score}%"></em></i><b>${row.score}%</b></div>`).join("");
+  const seasonScan=data.seasons.map(row=>`<div class="season-scan-item"><b>${SEASON_LABELS[row.id]}</b><span>${esc(seasonQuickReading(row,data))}</span></div>`).join("");
   const seasonCards=data.seasons.map(row=>{
     const thermal=row.thermal||{},left=thermal.left||{},right=thermal.right||{};
     const difference=left.mean==null||right.mean==null?null:right.mean-left.mean;
@@ -395,6 +432,7 @@ function renderCityStudy(data){
   const seasonalReading=data.seasons.map(row=>`<li>${esc(seasonalSentence(row,data))}</li>`).join("");
   const thermalSummary=`<span>Amplitud térmica anual</span><b>${esc(data.left.city_name)} ${studyNumber(data.thermal?.left?.range)} °C · ${esc(data.right.city_name)} ${studyNumber(data.thermal?.right?.range)} °C</b>`;
   $("city-study-output").innerHTML=`<div class="study-city-head">${panels}<div class="study-score"><b>${data.similarity_pct}%</b><span>afinidad con los parámetros actuales · ${esc(data.seasonal_alignment)}</span></div></div><section class="seasonal-overview"><div><h3>Radiografía estacional</h3><p class="study-caption">Las estaciones se toman de ${esc(data.left.city_name)}. En modo adaptativo, ${esc(data.right.city_name)} se compara con su estación equivalente.</p></div><div class="thermal-summary">${thermalSummary}</div></section><section class="study-reading seasonal-reading"><h3>Lectura por estación</h3><ul>${seasonalReading}</ul></section><section class="season-cards">${seasonCards}</section><div class="study-grid"><section><h3>Afinidad anual por dominio</h3>${domains}</section><section><h3>Resumen de afinidad por estación</h3>${seasons}</section></div><details class="annual-context"><summary>Contexto anual y promedios</summary><section class="annual-table-wrap"><h3>Valores anuales y diferencia</h3><table class="annual-table"><thead><tr><th>Variable</th><th>${esc(data.left.city_name)}</th><th>${esc(data.right.city_name)}</th><th>B − A</th></tr></thead><tbody>${annual}</tbody></table></section><section class="study-reading"><h3>Lectura anual</h3><ul>${reading}</ul></section></details>`;
+  $("city-study-output").querySelector(".study-grid>section:nth-child(2)")?.insertAdjacentHTML("beforeend",`<div class="season-scan">${seasonScan}</div>`);
 }
 async function runCityStudy(){
   if(!studyCities.left||!studyCities.right)return setStatus("Elige ambas urbes desde los resultados de búsqueda.",true);
@@ -432,7 +470,7 @@ async function init(){
     if(location.protocol==="file:") throw new Error("No abras index.html con doble clic. Ejecuta start_windows.bat / start_mac_linux.sh o `python serve.py`.");
     const cr=await fetch(new URL("config.json",DATA));if(!cr.ok)throw new Error(`config.json: HTTP ${cr.status}`);cfg=await cr.json();
     setStatus("Cargando coordenadas…",true);const [pb,ob,ib]=await Promise.all([ab(cfg.files.positions),ab(cfg.files.spatial_offsets),ab(cfg.files.spatial_indices)]);positions=new Float32Array(pb);spatialOffsets=new Uint32Array(ob);spatialIndices=new Uint32Array(ib);if(positions.length!==cfg.city_count*2)throw new Error("Coordenadas desalineadas");groups=cfg.groups.map(group=>group.id);groupLabels=Object.fromEntries(cfg.groups.map(group=>[group.id,group.label]));
-    mapView=new RasterMap($("map"),$("city-canvas"),positions,spatialOffsets,spatialIndices,cfg.spatial);setupControls();setupTopReferenceCompare();setupSearch();createWorker();startupDone=true;$("city-total").textContent=cfg.city_count.toLocaleString("es-ES");setStatus("Mapa listo");
+    mapView=new RasterMap($("map"),$("city-canvas"),positions,spatialOffsets,spatialIndices,cfg.spatial);setupControls();setupTopReferenceCompare();setupSearch();loadCountryShapes();createWorker();startupDone=true;$("city-total").textContent=cfg.city_count.toLocaleString("es-ES");setStatus("Mapa listo");
   }catch(e){console.error(e);$("fatal").textContent=e.message;$("fatal").classList.remove("hidden");setStatus("No se pudo iniciar",true);}
 }
 window.addEventListener("error",e=>{if(!startupDone)setStatus("Error de inicio: "+(e.message||"desconocido"),true)});
