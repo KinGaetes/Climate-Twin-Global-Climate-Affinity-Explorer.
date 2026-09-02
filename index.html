@@ -35,6 +35,10 @@
         <div id="search-results" class="search-results hidden"></div>
       </div>
       <button id="open-compare-studio-global" class="compare-launch">Comparar urbes o países</button>
+      <div class="geo-overlay-controls glass" aria-label="Capas geográficas">
+        <label><input id="toggle-equator" type="checkbox" checked> Ecuador</label>
+        <label><input id="toggle-grid" type="checkbox"> Meridianos y paralelos</label>
+      </div>
 
       <div class="legend glass" aria-label="Leyenda del heatmap">
         <div><i class="dot high"></i><span><b id="band-high">&gt; 60%</b> afinidad alta</span><strong id="count-high"></strong></div>
@@ -99,18 +103,18 @@
             <p id="preset-note" class="model-note"></p>
             <label class="field-label" for="season-mode">Estacionalidad</label>
             <select id="season-mode">
+              <option value="local-season" selected>Misma estación local (verano con verano)</option>
               <option value="adaptive">Adaptar hemisferio (permite desplazar seis meses)</option>
               <option value="calendar">Mismo calendario (enero con enero)</option>
-              <option value="local-season">Misma estación local (verano con verano)</option>
             </select>
-            <p class="model-note">El modelo conserva 26 períodos bimensuales por variable. El modo adaptativo elige la mejor alineación térmica; «misma estación local» empareja verano con verano e invierno con invierno, incluso entre hemisferios.</p>
+            <p class="model-note">Predeterminado: selecciona «Solo verano» para buscar veranos locales en todo el mundo; invierno, otoño y primavera funcionan igual. El modo adaptativo conserva la alternativa de buscar la mejor alineación térmica.</p>
             <label class="field-label" for="season-filter">Período a comparar</label>
             <select id="season-filter">
               <option value="annual">Año completo</option>
-              <option value="summer">Solo verano local de la urbe de referencia</option>
-              <option value="autumn">Solo otoño local de la urbe de referencia</option>
-              <option value="winter">Solo invierno local de la urbe de referencia</option>
-              <option value="spring">Solo primavera local de la urbe de referencia</option>
+              <option value="summer">Solo verano local (verano con verano)</option>
+              <option value="autumn">Solo otoño local (otoño con otoño)</option>
+              <option value="winter">Solo invierno local (invierno con invierno)</option>
+              <option value="spring">Solo primavera local (primavera con primavera)</option>
             </select>
             <p class="model-note">Las estaciones se toman del hemisferio de la urbe de referencia; con ajuste hemisférico, la temporada equivalente de la candidata se alinea automáticamente.</p>
             <details>
@@ -176,10 +180,6 @@
             </details>
           </section>
         </section>
-      </div>
-      <div class="geo-overlay-controls glass" aria-label="Capas geográficas">
-        <label><input id="toggle-equator" type="checkbox" checked> Ecuador</label>
-        <label><input id="toggle-grid" type="checkbox"> Meridianos y paralelos</label>
       </div>
       <footer class="sidebar-signature" aria-label="Kinsei">
         <img src="assets/kinsei.svg" alt="Kinsei">
