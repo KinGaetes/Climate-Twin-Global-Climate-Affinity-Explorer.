@@ -223,7 +223,20 @@
             <p id="study-country-right-note" class="country-picker-note">Escribe un país o selecciona su punto de ciudades en el mapa.</p>
           </div>
         </div>
-        <label class="country-limit-label" for="study-country-pair-limit">Pares a mostrar<select id="study-country-pair-limit"><option value="10">Top 10 (rápido)</option><option value="25">Top 25</option><option value="50">Top 50</option></select></label>
+        <div class="country-study-options">
+          <label for="study-country-season">Período para cruzar pares
+            <select id="study-country-season">
+              <option value="annual">Año completo</option>
+              <option value="summer">Solo verano local (verano con verano)</option>
+              <option value="autumn">Solo otoño local (otoño con otoño)</option>
+              <option value="winter">Solo invierno local (invierno con invierno)</option>
+              <option value="spring">Solo primavera local (primavera con primavera)</option>
+            </select>
+          </label>
+          <label for="study-country-pair-limit">Pares a mostrar
+            <select id="study-country-pair-limit"><option value="10">Top 10 (rápido)</option><option value="25">Top 25</option><option value="50">Top 50</option></select>
+          </label>
+        </div>
         <button id="run-country-study" class="primary-btn">Encontrar 10 pares distintos</button>
         <div id="country-study-output" class="study-output"><p class="model-note">Los mapas muestran los primeros 10 pares. Selecciona un par de la lista para abrir automáticamente su comparación estacional entre urbes.</p></div>
       </section>

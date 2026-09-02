@@ -470,7 +470,7 @@ async function compareCountries(leftCountryId, rightCountryId, mode, weights, se
     usedLeft.add(pair.leftIdx); usedRight.add(pair.rightIdx); pairs.push(pair);
     if (pairs.length === requestedLimit) break;
   }
-  return {leftCountry: codebooks.countries[leftId], rightCountry: codebooks.countries[rightId], leftBounds: boundsForIndices(countryIndices(leftId)), rightBounds: boundsForIndices(countryIndices(rightId)), sampled, requestedLimit, pairs: pairs.map(pair => ({similarity_pct: pair.score, seasonal_alignment: alignmentLabel(mode, pair.shift, season), left: detailLite(pair.leftIdx), right: detailLite(pair.rightIdx)}))};
+  return {leftCountry: codebooks.countries[leftId], rightCountry: codebooks.countries[rightId], leftBounds: boundsForIndices(countryIndices(leftId)), rightBounds: boundsForIndices(countryIndices(rightId)), sampled, requestedLimit, mode, season, pairs: pairs.map(pair => ({similarity_pct: pair.score, seasonal_alignment: alignmentLabel(mode, pair.shift, season), left: detailLite(pair.leftIdx), right: detailLite(pair.rightIdx)}))};
 }
 
 const ANNUAL_METRICS = [

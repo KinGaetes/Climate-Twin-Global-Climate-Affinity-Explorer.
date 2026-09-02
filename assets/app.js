@@ -480,13 +480,14 @@ function openCountryPairStudy(pair){
 function renderCountryStudy(result){
   const pairs=result.pairs.map((pair,index)=>`<li><button type="button" class="country-pair-item" data-country-pair="${index}"><i style="background:${STUDY_COLORS[index%STUDY_COLORS.length]}">${index+1}</i><span><b>${esc(pair.left.city_name)} ↔ ${esc(pair.right.city_name)}</b><small>${esc(pair.seasonal_alignment)} · ${pair.similarity_pct}% · ver estudio estacional</small></span><em>Ver</em></button></li>`).join("");
   const mapNote=result.pairs.length>10?`Los mapas muestran los primeros 10 de ${result.pairs.length} pares; la lista incluye todos los resultados.`:"Los números y colores vinculan cada ciudad en ambos mapas.";
-  $("country-study-output").innerHTML=`<p class="study-caption">${result.sampled?"Cruce amplio: se usó una muestra de ciudades con mayor población para mantener la respuesta ágil.":"Cruce exhaustivo de los pares disponibles."} ${mapNote}</p><div class="country-map-pair"><section><canvas id="study-country-map-left" width="980" height="650"></canvas></section><section><canvas id="study-country-map-right" width="980" height="650"></canvas></section></div><ol class="country-pair-list">${pairs}</ol>`;
+  const period=result.season&&result.season!=="annual"?`${SEASON_LABELS[result.season]} local con ${SEASON_LABELS[result.season].toLowerCase()} local`:"año completo";
+  $("country-study-output").innerHTML=`<p class="study-caption"><b>Período comparado: ${esc(period)}.</b> ${result.sampled?"Cruce amplio: se usó una muestra de ciudades con mayor población para mantener la respuesta ágil.":"Cruce exhaustivo de los pares disponibles."} ${mapNote}</p><div class="country-map-pair"><section><canvas id="study-country-map-left" width="980" height="650"></canvas></section><section><canvas id="study-country-map-right" width="980" height="650"></canvas></section></div><ol class="country-pair-list">${pairs}</ol>`;
   document.querySelectorAll("[data-country-pair]").forEach(button=>button.addEventListener("click",()=>openCountryPairStudy(result.pairs[Number(button.dataset.countryPair)])));
   drawStudyCountryMaps(result).catch(e=>setStatus(`No se pudieron dibujar los mapas: ${e.message}`,true));
 }
 async function runCountryStudy(){
-  const leftCountryId=$("study-country-left").value,rightCountryId=$("study-country-right").value,limit=Number($("study-country-pair-limit").value),button=$("run-country-study");button.disabled=true;setStatus("Buscando pares climáticos entre países…",true);
-  try{const p=getParams(),result=await request("compareCountries",{leftCountryId,rightCountryId,mode:p.mode,season:p.season,weights:p.weights,limit},60000);renderCountryStudy(result);setStatus("Estudio de países listo");}catch(e){setStatus(`No se pudo comparar países: ${e.message}`,true)}finally{button.disabled=false;}
+  const leftCountryId=$("study-country-left").value,rightCountryId=$("study-country-right").value,limit=Number($("study-country-pair-limit").value),season=$("study-country-season").value,button=$("run-country-study");button.disabled=true;setStatus("Buscando pares climáticos entre países…",true);
+  try{const p=getParams(),result=await request("compareCountries",{leftCountryId,rightCountryId,mode:p.mode,season,weights:p.weights,limit},60000);renderCountryStudy(result);setStatus("Estudio de países listo");}catch(e){setStatus(`No se pudo comparar países: ${e.message}`,true)}finally{button.disabled=false;}
 }
 
 let searchTimer=0;
