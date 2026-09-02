@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#dffaf3">
+  <title>Neo Climate Twin — afinidades climáticas territoriales</title>
+  <link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+  <main class="app-shell">
+    <section class="map-panel">
+      <div id="map" class="map" aria-label="Mapa mundial interactivo">
+        <div class="ocean-glow"></div>
+        <div id="tiles" class="tiles" aria-hidden="true"></div>
+        <canvas id="city-canvas"></canvas>
+        <div id="map-labels" class="map-labels" aria-hidden="true"></div>
+        <div id="selected-marker" class="selected-marker hidden" aria-hidden="true"></div>
+        <div id="map-tooltip" class="map-tooltip hidden" role="status"></div>
+        <div class="map-fade"></div>
+      </div>
+
+      <div class="brand glass">
+        <div class="orb-logo" aria-hidden="true"></div>
+        <div>
+          <h1>Neo Climate Twin</h1>
+          <p><span id="city-total">235.471</span> urbes · afinidad climática territorial</p>
+        </div>
+      </div>
+
+      <div class="search-wrap glass">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.4-4.4m2.4-5.1a7.5 7.5 0 1 1-15 0 7.5 7.5 0 0 1 15 0Z"/></svg>
+        <input id="search" autocomplete="off" spellcheck="false" placeholder="Buscar una urbe (puedes añadir país)…" aria-label="Buscar urbe">
+        <div id="search-results" class="search-results hidden"></div>
+      </div>
+      <button id="open-compare-studio-global" class="compare-launch glass">Comparar urbes o países</button>
+
+      <div class="legend glass" aria-label="Leyenda del heatmap">
+        <div><i class="dot high"></i><span><b id="band-high">&gt; 60%</b> afinidad alta</span><strong id="count-high"></strong></div>
+        <div><i class="dot mid"></i><span><b id="band-mid">48–60%</b> afinidad media</span><strong id="count-mid"></strong></div>
+        <div><i class="dot low"></i><span><b id="band-low">&lt; 48%</b> afinidad baja</span><strong id="count-low"></strong></div>
+      </div>
+
+      <div class="map-help glass">
+        <span>Arrastra o mantén rueda: mover · rueda: zoom</span>
+        <span>Click: seleccionar · click derecho: deseleccionar</span>
+        <small>Mapa base © OpenStreetMap contributors</small>
+      </div>
+
+      <div id="status" class="status hidden"></div>
+      <div id="fatal" class="fatal hidden"></div>
+    </section>
+
+    <aside class="sidebar">
+      <div class="sidebar-inner">
+        <section id="empty-state" class="empty-state">
+          <div class="bubble-art" aria-hidden="true"><i></i><i></i><i></i></div>
+          <p class="eyebrow">Explorador climático territorial</p>
+          <h2>Elige una urbe en el mapa</h2>
+          <p>Compara temperatura, agua, luz, humedad, nubes y viento a lo largo del año. Úsalo para descubrir referencias; no sustituye un estudio local, sísmico o cultural.</p>
+          <div class="engine-pill"><span class="pulse"></span><span id="engine-state">Iniciando motor…</span></div>
+        </section>
+
+        <section id="selected-view" class="selected-view hidden">
+          <header class="city-header">
+            <div>
+              <p class="eyebrow">Urbe seleccionada</p>
+              <h2 id="city-name">—</h2>
+              <p id="city-place" class="city-place">—</p>
+              <p id="population" class="population">—</p>
+            </div>
+            <button id="clear" class="icon-btn" title="Deseleccionar" aria-label="Deseleccionar">×</button>
+          </header>
+
+          <div class="metrics">
+            <div><span>Temperatura media</span><b id="m-temp">—</b></div>
+            <div><span>Rango semanal</span><b id="m-range">—</b></div>
+            <div><span>Precipitación</span><b id="m-rain">—</b></div>
+            <div><span>Humedad</span><b id="m-hum">—</b></div>
+            <div><span>Sol</span><b id="m-sun">—</b></div>
+            <div><span>Nubosidad</span><b id="m-cloud">—</b></div>
+          </div>
+
+          <section class="control-card">
+            <div class="section-title">
+              <div><p class="eyebrow">Modelo</p><h3>Afinidad climática</h3></div>
+              <span class="perf"><b id="compute-ms"></b></span>
+            </div>
+            <label class="field-label" for="preset">Preset</label>
+            <select id="preset">
+              <option value="general">Uso general</option>
+              <option value="habitat">Arquitectura bioclimática</option>
+              <option value="balanced">Balanceado</option>
+              <option value="thermal">Térmico / confort pasivo</option>
+              <option value="water">Agua / riego y preservación</option>
+              <option value="light">Luz / energía solar</option>
+            </select>
+            <p id="preset-note" class="model-note"></p>
+            <label class="field-label" for="season-mode">Estacionalidad</label>
+            <select id="season-mode">
+              <option value="adaptive">Adaptar hemisferio (permite desplazar seis meses)</option>
+              <option value="calendar">Mismo calendario (enero con enero)</option>
+            </select>
+            <p class="model-note">El modelo conserva 26 períodos bimensuales por variable. El modo adaptativo usa una sola alineación estacional basada en temperatura y la aplica al resto de factores.</p>
+            <label class="field-label" for="season-filter">Período a comparar</label>
+            <select id="season-filter">
+              <option value="annual">Año completo</option>
+              <option value="summer">Solo verano local de la urbe de referencia</option>
+              <option value="autumn">Solo otoño local de la urbe de referencia</option>
+              <option value="winter">Solo invierno local de la urbe de referencia</option>
+              <option value="spring">Solo primavera local de la urbe de referencia</option>
+            </select>
+            <p class="model-note">Las estaciones se toman del hemisferio de la urbe de referencia; con ajuste hemisférico, la temporada equivalente de la candidata se alinea automáticamente.</p>
+            <details>
+              <summary>Ajustar pesos</summary>
+              <div id="sliders" class="sliders"></div>
+            </details>
+            <details>
+              <summary>Escala continua del heatmap</summary>
+              <p class="model-note">El color se interpola continuamente desde azul (mínimo), por verde (intermedio), hasta rojo (máximo). Ajusta los dos puntos de referencia.</p>
+              <label class="slider-row"><span>Intermedio</span><input id="heat-mid" type="range" min="1" max="98" step="1" value="65"><output id="o-heat-mid">65%</output></label>
+              <label class="slider-row"><span>Máximo</span><input id="heat-high" type="range" min="2" max="99" step="1" value="75"><output id="o-heat-high">75%</output></label>
+            </details>
+            <button id="apply" class="primary-btn">Recalcular heatmap</button>
+            <button id="export-2160" class="secondary-btn">Exportar mapa PNG 2160p</button>
+            <p class="export-note">Genera una imagen de 3840 × 2160 con mapa encuadrado, heatmap, ciudad de referencia y afinidades destacadas, sin paneles ni controles.</p>
+          </section>
+
+          <section class="ranking-card">
+            <div class="section-title"><div><p class="eyebrow">Referencias</p><h3>Top 10 afinidades</h3></div></div>
+            <p class="model-note">Los factores visibles explican cada resultado. Son puntos de partida para investigar técnicas, no recomendaciones de construcción.</p>
+            <div class="filters">
+              <label><input id="f-grid" type="checkbox" checked><span>Excluir misma celda climática</span></label>
+              <label><input id="f-country" type="checkbox"><span>Excluir mismo país</span></label>
+              <label><input id="f-region" type="checkbox"><span>Excluir misma región</span></label>
+              <label><input id="f-continent" type="checkbox"><span>Excluir mismo continente</span></label>
+            </div>
+            <label class="toggle-line"><input id="top-only" type="checkbox"><span>Ocultar en el mapa todo salvo el conjunto elegido</span></label>
+            <div class="visibility-controls">
+              <label class="field-label" for="top-scope">Área donde buscar afinidades</label>
+              <select id="top-scope">
+                <option value="global">Todo el mundo</option>
+                <option value="continent">Continente elegido</option>
+                <option value="subcontinent">Subcontinente elegido</option>
+                <option value="country">País elegido</option>
+              </select>
+              <label class="field-label" for="top-area">Destino de comparación</label>
+              <select id="top-area" disabled><option value="">Todo el mundo</option></select>
+              <label class="field-label" for="top-mode">Conjunto visible</label>
+              <select id="top-mode">
+                <option value="count">Top X ciudades</option>
+                <option value="percentile">Top X% más parecido</option>
+                <option value="threshold">Afinidad igual o superior a X%</option>
+              </select>
+              <label id="top-value-label" class="field-label" for="top-value">Número de ciudades</label>
+              <input id="top-value" type="number" min="1" max="10000" step="1" value="250">
+            </div>
+            <p id="visibility-note" class="model-note">La lista usa el área elegida; las exclusiones se aplican tanto al ranking como al mapa.</p>
+            <div id="top-list" class="top-list"></div>
+            <details class="dashboard-tools">
+              <summary>Mapas de país para dashboard</summary>
+              <p class="model-note">Exporta un país con las 10 ciudades más análogas a la urbe elegida; las etiquetas usan líneas cuando los nombres se solapan.</p>
+              <label class="field-label" for="export-country">País de destino</label>
+              <select id="export-country"></select>
+              <button id="export-country-map" class="secondary-btn">Exportar país · Top 10</button>
+              <p class="model-note">Compara pares de ciudades entre dos países usando los pesos y la estacionalidad actuales.</p>
+              <label class="field-label" for="compare-country-left">Primer país</label>
+              <select id="compare-country-left"></select>
+              <label class="field-label" for="compare-country-right">Segundo país</label>
+              <select id="compare-country-right"></select>
+              <button id="export-country-comparison" class="secondary-btn">Comparar países y exportar pares</button>
+              <button id="open-compare-studio" class="secondary-btn">Abrir estudio comparativo</button>
+              <p id="country-dashboard-note" class="export-note"></p>
+            </details>
+          </section>
+        </section>
+      </div>
+    </aside>
+  </main>
+  <div id="compare-studio" class="compare-studio hidden" role="dialog" aria-modal="true" aria-labelledby="compare-title">
+    <section class="compare-window">
+      <header class="compare-header">
+        <div><p class="eyebrow">Lectura comparativa</p><h2 id="compare-title">Estudio climático en profundidad</h2></div>
+        <button id="close-compare-studio" class="icon-btn" aria-label="Cerrar estudio comparativo">×</button>
+      </header>
+      <div class="compare-tabs" role="tablist" aria-label="Tipo de estudio">
+        <button class="compare-tab active" data-study-mode="cities" role="tab">Dos urbes</button>
+        <button class="compare-tab" data-study-mode="countries" role="tab">Dos países</button>
+      </div>
+      <section id="study-cities" class="study-section">
+        <div class="city-pickers">
+          <div class="study-picker"><label>Urbe A<input id="study-city-left" autocomplete="off" placeholder="Busca una urbe y país"></label><div id="study-city-left-results" class="study-search-results hidden"></div></div>
+          <div class="study-picker"><label>Urbe B<input id="study-city-right" autocomplete="off" placeholder="Busca una segunda urbe"></label><div id="study-city-right-results" class="study-search-results hidden"></div></div>
+        </div>
+        <button id="run-city-study" class="primary-btn">Comparar urbes</button>
+        <div id="city-study-output" class="study-output"><p class="model-note">Elige dos urbes para comparar el año completo, cada dominio y el comportamiento por estación.</p></div>
+      </section>
+      <section id="study-countries" class="study-section hidden">
+        <div class="country-pickers">
+          <label>País A<select id="study-country-left"></select></label>
+          <label>País B<select id="study-country-right"></select></label>
+        </div>
+        <button id="run-country-study" class="primary-btn">Encontrar 10 pares distintos</button>
+        <div id="country-study-output" class="study-output"><p class="model-note">Los mapas encuadrarán ambos países y conectarán cada par mediante color y número.</p></div>
+      </section>
+    </section>
+  </div>
+  <script type="module" src="assets/app.js"></script>
+</body>
+</html>
