@@ -226,6 +226,20 @@ function seasonBuckets(season, referenceIdx) {
   return positions[referenceIdx * 2 + 1] < 0 ? selected.map(bucket => (bucket + cfg.seasonal_shift_buckets) % cfg.bucket_count) : selected;
 }
 
+// Keeps named seasons local to each city: northern summer is compared with
+// southern summer, rather than with the same calendar months.
+function localSeasonShift(referenceIdx, candidateIdx, season) {
+  if (!season || season === "annual") return 0;
+  const referenceSouth = positions[referenceIdx * 2 + 1] < 0;
+  const candidateSouth = positions[candidateIdx * 2 + 1] < 0;
+  return referenceSouth === candidateSouth ? 0 : cfg.seasonal_shift_buckets;
+}
+
+function alignmentLabel(mode, shift, season) {
+  if (mode === "local-season" && season && season !== "annual") return "misma estación local";
+  return shift ? "hemisferio opuesto" : "mismo calendario";
+}
+
 function groupDistance(refOffset, candidateOffset, group, shift, selectedBuckets = null) {
   const buckets = cfg.bucket_count;
   const base = group * buckets;
@@ -265,7 +279,9 @@ async function compute(idx, mode, weights, season = "annual") {
   for (let i = 0; i < N; i++) {
     const off = i * D;
     let shift = 0;
-    if (mode === "adaptive") {
+    if (mode === "local-season") {
+      shift = localSeasonShift(idx, i, season);
+    } else if (mode === "adaptive") {
       const opposite = cfg.seasonal_shift_buckets;
       if (groupDistance(ref, off, 0, opposite, selectedBuckets) < groupDistance(ref, off, 0, 0, selectedBuckets)) shift = opposite;
     }
@@ -307,10 +323,11 @@ function rankedDetail(idx, candidateIdx) {
   const ref = idx * cfg.feature_dim, candidate = candidateIdx * cfg.feature_dim;
   const selectedBuckets = seasonBuckets(lastModel?.season || "annual", idx);
   let shift = 0;
-  if (lastModel?.mode === "adaptive" && groupDistance(ref, candidate, 0, cfg.seasonal_shift_buckets, selectedBuckets) < groupDistance(ref, candidate, 0, 0, selectedBuckets)) shift = cfg.seasonal_shift_buckets;
+  if (lastModel?.mode === "local-season") shift = localSeasonShift(idx, candidateIdx, lastModel?.season);
+  else if (lastModel?.mode === "adaptive" && groupDistance(ref, candidate, 0, cfg.seasonal_shift_buckets, selectedBuckets) < groupDistance(ref, candidate, 0, 0, selectedBuckets)) shift = cfg.seasonal_shift_buckets;
   return Object.assign(detailLite(candidateIdx), {
     similarity_pct: lastScores[candidateIdx],
-    seasonal_alignment: shift ? "hemisferio opuesto" : "mismo calendario",
+    seasonal_alignment: alignmentLabel(lastModel?.mode, shift, lastModel?.season),
     factors: explanation(idx, candidateIdx, shift, selectedBuckets)
   });
 }
@@ -408,7 +425,8 @@ function pairScore(leftIdx, rightIdx, mode, weights, season = "annual") {
   const ref = leftIdx * cfg.feature_dim, candidate = rightIdx * cfg.feature_dim;
   const selectedBuckets = seasonBuckets(season, leftIdx);
   let shift = 0;
-  if (mode === "adaptive" && groupDistance(ref, candidate, 0, cfg.seasonal_shift_buckets, selectedBuckets) < groupDistance(ref, candidate, 0, 0, selectedBuckets)) shift = cfg.seasonal_shift_buckets;
+  if (mode === "local-season") shift = localSeasonShift(leftIdx, rightIdx, season);
+  else if (mode === "adaptive" && groupDistance(ref, candidate, 0, cfg.seasonal_shift_buckets, selectedBuckets) < groupDistance(ref, candidate, 0, 0, selectedBuckets)) shift = cfg.seasonal_shift_buckets;
   let sw = 0, d2 = 0;
   for (let g = 0; g < cfg.groups.length; g++) { const w = Math.max(0, Number(weights[g] || 0)); if (!w) continue; sw += w; d2 += w * groupDistance(ref, candidate, g, shift, selectedBuckets); }
   if (!sw) throw new Error("Al menos un peso debe ser mayor a 0.");
@@ -452,7 +470,7 @@ async function compareCountries(leftCountryId, rightCountryId, mode, weights, se
     usedLeft.add(pair.leftIdx); usedRight.add(pair.rightIdx); pairs.push(pair);
     if (pairs.length === requestedLimit) break;
   }
-  return {leftCountry: codebooks.countries[leftId], rightCountry: codebooks.countries[rightId], leftBounds: boundsForIndices(countryIndices(leftId)), rightBounds: boundsForIndices(countryIndices(rightId)), sampled, requestedLimit, pairs: pairs.map(pair => ({similarity_pct: pair.score, seasonal_alignment: pair.shift ? "hemisferio opuesto" : "mismo calendario", left: detailLite(pair.leftIdx), right: detailLite(pair.rightIdx)}))};
+  return {leftCountry: codebooks.countries[leftId], rightCountry: codebooks.countries[rightId], leftBounds: boundsForIndices(countryIndices(leftId)), rightBounds: boundsForIndices(countryIndices(rightId)), sampled, requestedLimit, pairs: pairs.map(pair => ({similarity_pct: pair.score, seasonal_alignment: alignmentLabel(mode, pair.shift, season), left: detailLite(pair.leftIdx), right: detailLite(pair.rightIdx)}))};
 }
 
 const ANNUAL_METRICS = [
@@ -501,7 +519,7 @@ async function compareCities(leftIdx, rightIdx, mode, weights, season = "annual"
     return {
       id,
       score: seasonResult.score,
-      seasonal_alignment: seasonResult.shift ? "hemisferio opuesto" : "mismo calendario",
+      seasonal_alignment: alignmentLabel(mode, seasonResult.shift, id),
       thermal: {
         left: thermalStatsForBuckets(leftIdx, buckets),
         right: thermalStatsForBuckets(rightIdx, buckets, seasonResult.shift)
@@ -517,7 +535,7 @@ async function compareCities(leftIdx, rightIdx, mode, weights, season = "annual"
   }));
   return {
     similarity_pct: result.score,
-    seasonal_alignment: result.shift ? "hemisferio opuesto" : "mismo calendario",
+    seasonal_alignment: alignmentLabel(mode, result.shift, season),
     left: detailLite(leftIdx), right: detailLite(rightIdx),
     domains: explanation(leftIdx, rightIdx, result.shift, selectedBuckets),
     seasons,

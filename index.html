@@ -101,8 +101,9 @@
             <select id="season-mode">
               <option value="adaptive">Adaptar hemisferio (permite desplazar seis meses)</option>
               <option value="calendar">Mismo calendario (enero con enero)</option>
+              <option value="local-season">Misma estación local (verano con verano)</option>
             </select>
-            <p class="model-note">El modelo conserva 26 períodos bimensuales por variable. El modo adaptativo usa una sola alineación estacional basada en temperatura y la aplica al resto de factores.</p>
+            <p class="model-note">El modelo conserva 26 períodos bimensuales por variable. El modo adaptativo elige la mejor alineación térmica; «misma estación local» empareja verano con verano e invierno con invierno, incluso entre hemisferios.</p>
             <label class="field-label" for="season-filter">Período a comparar</label>
             <select id="season-filter">
               <option value="annual">Año completo</option>
