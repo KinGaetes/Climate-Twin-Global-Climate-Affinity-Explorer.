@@ -212,16 +212,28 @@ async function search(q, limit = 12) {
   return best.slice(0, limit).map(x => detailLite(x.idx));
 }
 
+const SEASON_ORDER = ["summer", "autumn", "winter", "spring"];
+
+function normalizedSeasons(season) {
+  const requested = Array.isArray(season) ? season : !season || season === "annual" ? [] : [season];
+  return SEASON_ORDER.filter(id => requested.includes(id));
+}
+
+function hasSeasonRestriction(season) {
+  const selected = normalizedSeasons(season);
+  return selected.length > 0 && selected.length < SEASON_ORDER.length;
+}
+
 function seasonBuckets(season, referenceIdx) {
-  if (!season || season === "annual") return null;
+  const requested = normalizedSeasons(season);
+  if (!hasSeasonRestriction(requested)) return null;
   const northern = {
     summer: [10, 11, 12, 13, 14, 15],
     autumn: [16, 17, 18, 19, 20, 21, 22],
     winter: [23, 24, 25, 0, 1, 2, 3],
     spring: [4, 5, 6, 7, 8, 9]
   };
-  const selected = northern[season];
-  if (!selected) return null;
+  const selected = requested.flatMap(id => northern[id] || []);
   // Al sur del ecuador, el verano/invierno local ocurre seis meses después.
   return positions[referenceIdx * 2 + 1] < 0 ? selected.map(bucket => (bucket + cfg.seasonal_shift_buckets) % cfg.bucket_count) : selected;
 }
@@ -229,14 +241,14 @@ function seasonBuckets(season, referenceIdx) {
 // Keeps named seasons local to each city: northern summer is compared with
 // southern summer, rather than with the same calendar months.
 function localSeasonShift(referenceIdx, candidateIdx, season) {
-  if (!season || season === "annual") return 0;
+  if (!hasSeasonRestriction(season)) return 0;
   const referenceSouth = positions[referenceIdx * 2 + 1] < 0;
   const candidateSouth = positions[candidateIdx * 2 + 1] < 0;
   return referenceSouth === candidateSouth ? 0 : cfg.seasonal_shift_buckets;
 }
 
 function alignmentLabel(mode, shift, season) {
-  if (mode === "local-season" && season && season !== "annual") return "misma estación local";
+  if (mode === "local-season" && hasSeasonRestriction(season)) return normalizedSeasons(season).length === 1 ? "misma estación local" : "estaciones locales equivalentes";
   return shift ? "hemisferio opuesto" : "mismo calendario";
 }
 

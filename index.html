@@ -107,16 +107,15 @@
               <option value="adaptive">Adaptar hemisferio (permite desplazar seis meses)</option>
               <option value="calendar">Mismo calendario (enero con enero)</option>
             </select>
-            <p class="model-note">Predeterminado: selecciona «Solo verano» para buscar veranos locales en todo el mundo; invierno, otoño y primavera funcionan igual. El modo adaptativo conserva la alternativa de buscar la mejor alineación térmica.</p>
-            <label class="field-label" for="season-filter">Período a comparar</label>
-            <select id="season-filter">
-              <option value="annual">Año completo</option>
-              <option value="summer">Solo verano local (verano con verano)</option>
-              <option value="autumn">Solo otoño local (otoño con otoño)</option>
-              <option value="winter">Solo invierno local (invierno con invierno)</option>
-              <option value="spring">Solo primavera local (primavera con primavera)</option>
-            </select>
-            <p class="model-note">Las estaciones se toman del hemisferio de la urbe de referencia; con ajuste hemisférico, la temporada equivalente de la candidata se alinea automáticamente.</p>
+            <p class="model-note">Con «misma estación local», verano se compara con verano e invierno con invierno. El modo adaptativo conserva la alternativa de buscar la mejor alineación térmica.</p>
+            <fieldset id="season-filter" class="season-selection">
+              <legend>Estaciones a comparar</legend>
+              <label><input type="checkbox" value="summer" checked><span aria-hidden="true">☀️</span><span>Verano</span></label>
+              <label><input type="checkbox" value="autumn" checked><span aria-hidden="true">🍂</span><span>Otoño</span></label>
+              <label><input type="checkbox" value="winter" checked><span aria-hidden="true">❄️</span><span>Invierno</span></label>
+              <label><input type="checkbox" value="spring" checked><span aria-hidden="true">🌱</span><span>Primavera</span></label>
+            </fieldset>
+            <p class="model-note">Puedes marcar una o varias estaciones. Con las cuatro activas, la comparación usa el año completo.</p>
             <details>
               <summary>Ajustar pesos</summary>
               <div id="sliders" class="sliders"></div>
@@ -224,15 +223,13 @@
           </div>
         </div>
         <div class="country-study-options">
-          <label for="study-country-season">Período para cruzar pares
-            <select id="study-country-season">
-              <option value="annual">Año completo</option>
-              <option value="summer">Solo verano local (verano con verano)</option>
-              <option value="autumn">Solo otoño local (otoño con otoño)</option>
-              <option value="winter">Solo invierno local (invierno con invierno)</option>
-              <option value="spring">Solo primavera local (primavera con primavera)</option>
-            </select>
-          </label>
+          <fieldset id="study-country-seasons" class="season-selection country-season-selection">
+            <legend>Estaciones para cruzar pares</legend>
+            <label><input type="checkbox" value="summer" checked><span aria-hidden="true">☀️</span><span>Verano</span></label>
+            <label><input type="checkbox" value="autumn" checked><span aria-hidden="true">🍂</span><span>Otoño</span></label>
+            <label><input type="checkbox" value="winter" checked><span aria-hidden="true">❄️</span><span>Invierno</span></label>
+            <label><input type="checkbox" value="spring" checked><span aria-hidden="true">🌱</span><span>Primavera</span></label>
+          </fieldset>
           <label for="study-country-pair-limit">Pares a mostrar
             <select id="study-country-pair-limit"><option value="10">Top 10 (rápido)</option><option value="25">Top 25</option><option value="50">Top 50</option></select>
           </label>

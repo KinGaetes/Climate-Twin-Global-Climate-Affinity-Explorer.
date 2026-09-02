@@ -117,12 +117,14 @@ class RasterMap {
   schedule(){if(this.raf)return;this.raf=requestAnimationFrame(()=>{this.raf=0;this.render();});}
   render(){this.renderTiles();this.renderGeoGrid();this.renderPoints();this.renderLabels();this.positionMarker();}
   setGeoOverlay(grid,equator){this.showGeoGrid=Boolean(grid);this.showEquator=Boolean(equator);this.schedule();}
-  geoY(lat){let dy=this.my(lat)-this.center.y;if(dy>.5)dy-=1;if(dy<-.5)dy+=1;return this.h/2+dy*this.world()}
-  geoX(lon){let dx=this.mx(lon)-this.center.x;if(dx>.5)dx-=1;if(dx<-.5)dx+=1;return this.w/2+dx*this.world()}
+  geoY(lat,worldCopy=0){return this.h/2+(this.my(lat)+worldCopy-this.center.y)*this.world()}
+  geoX(lon,worldCopy=0){return this.w/2+(this.mx(lon)+worldCopy-this.center.x)*this.world()}
+  geoCopies(value,min,max){const first=Math.ceil(min-value),last=Math.floor(max-value),copies=[];for(let copy=first;copy<=last;copy++)copies.push(copy);return copies}
   renderGeoGrid(){
     const ctx=this.gridCtx;ctx.setTransform(this.dpr,0,0,this.dpr,0,0);ctx.clearRect(0,0,this.w,this.h);if(!this.showGeoGrid&&!this.showEquator)return;
-    if(this.showGeoGrid){const step=this.zoom<2.4?30:this.zoom<4.2?15:10;ctx.lineWidth=1;ctx.strokeStyle="rgba(15,92,110,.20)";ctx.setLineDash([3,6]);for(let lon=-180;lon<180;lon+=step){const x=this.geoX(lon);if(x<-1||x>this.w+1)continue;ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,this.h);ctx.stroke();}for(let lat=-75;lat<=75;lat+=step){if(lat===0)continue;const y=this.geoY(lat);if(y<-1||y>this.h+1)continue;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(this.w,y);ctx.stroke();}ctx.setLineDash([]);}
-    if(this.showEquator){const y=this.geoY(0);if(y>=-3&&y<=this.h+3){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(this.w,y);ctx.lineWidth=2;ctx.strokeStyle="rgba(255,230,113,.92)";ctx.shadowColor="rgba(8,73,90,.38)";ctx.shadowBlur=3;ctx.stroke();ctx.shadowBlur=0;}}
+    const world=this.world(),xMin=this.center.x-this.w/(2*world),xMax=this.center.x+this.w/(2*world),yMin=this.center.y-this.h/(2*world),yMax=this.center.y+this.h/(2*world);
+    if(this.showGeoGrid){const step=this.zoom<2.4?30:this.zoom<4.2?15:10;ctx.lineWidth=1;ctx.strokeStyle="rgba(15,92,110,.20)";ctx.setLineDash([3,6]);for(let lon=-180;lon<180;lon+=step){const base=this.mx(lon);for(const copy of this.geoCopies(base,xMin,xMax)){const x=this.geoX(lon,copy);ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,this.h);ctx.stroke();}}for(let lat=-75;lat<=75;lat+=step){if(lat===0)continue;const base=this.my(lat);for(const copy of this.geoCopies(base,yMin,yMax)){const y=this.geoY(lat,copy);ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(this.w,y);ctx.stroke();}}ctx.setLineDash([]);}
+    if(this.showEquator){const base=this.my(0);for(const copy of this.geoCopies(base,yMin,yMax)){const y=this.geoY(0,copy);ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(this.w,y);ctx.lineWidth=2;ctx.strokeStyle="rgba(255,230,113,.92)";ctx.shadowColor="rgba(8,73,90,.38)";ctx.shadowBlur=3;ctx.stroke();ctx.shadowBlur=0;}}
   }
   renderTiles(){
     const z=Math.floor(this.zoom), scale=Math.pow(2,this.zoom-z), n=Math.pow(2,z), tile=256*scale, centerX=this.center.x*n*256, centerY=this.center.y*n*256;
@@ -194,7 +196,10 @@ let groups=[],groupLabels={};
 const GENERAL_WEIGHTS=[2.0,1.8,1.6,0.9,0.9,1.0,1.0];
 const ARCHITECTURE_WEIGHTS=[2.0,1.45,1.75,1.45,1.0,0.65,1.25];
 const PRESET_NOTES={general:"Uso general: temperatura, lluvia y humedad dominan; los demás factores conservan influencia.",habitat:"Arquitectura bioclimática: prioriza confort térmico y humedad; mantiene sol, lluvia y viento para orientar envolvente, sombreado, ventilación y drenaje.",balanced:"Cada dominio climático tiene el mismo peso.",thermal:"Enfatiza el confort térmico y la moderación pasiva.",water:"Enfatiza agua, humedad y estacionalidad hídrica.",light:"Enfatiza radiación solar y luz diurna."};
-function getParams(){return{mode:$("season-mode").value,season:$("season-filter").value,weights:groups.map(g=>Number($(`w-${g}`).value))}}
+const SEASON_ORDER=["summer","autumn","winter","spring"];
+function selectedSeasons(containerId){return [...document.querySelectorAll(`#${containerId} input[type=checkbox]:checked`)].map(input=>input.value).filter(id=>SEASON_ORDER.includes(id));}
+function setupSeasonSelection(containerId,onChange=()=>{}){const inputs=[...document.querySelectorAll(`#${containerId} input[type=checkbox]`)];inputs.forEach(input=>input.addEventListener("change",event=>{if(!inputs.some(item=>item.checked)){event.target.checked=true;setStatus("Selecciona al menos una estación.",true);return;}onChange();}));}
+function getParams(){return{mode:$("season-mode").value,season:selectedSeasons("season-filter"),weights:groups.map(g=>Number($(`w-${g}`).value))}}
 function applyPreset(name){const vals=name==="general"?GENERAL_WEIGHTS:name==="habitat"?ARCHITECTURE_WEIGHTS:cfg.presets[name];groups.forEach((g,i)=>{$(`w-${g}`).value=vals[i];$(`o-${g}`).textContent=Number(vals[i]).toFixed(2);});$("preset-note").textContent=PRESET_NOTES[name]||"";}
 function heatBands(){return{mid:Number($("heat-mid").value),high:Number($("heat-high").value)}}
 function scoreClass(score){const b=heatBands();return score>b.high?"high":score>=b.mid?"mid":"low"}
@@ -334,7 +339,7 @@ function setupControls(){
   const sliders=$("sliders");groups.forEach(g=>{const row=document.createElement("label");row.className="slider-row";row.innerHTML=`<span>${groupLabels[g]}</span><input id="w-${g}" type="range" min="0" max="3" step=".05"><output id="o-${g}"></output>`;sliders.appendChild(row);row.querySelector("input").addEventListener("input",e=>$(`o-${g}`).textContent=Number(e.target.value).toFixed(2));});
   $("heat-mid").value=65;$("heat-high").value=75;
   applyPreset("general");updateHeatScale();$("preset").addEventListener("change",e=>applyPreset(e.target.value));$("apply").addEventListener("click",()=>selectedIdx!=null&&recompute());$("export-2160").addEventListener("click",export2160p);$("clear").addEventListener("click",clearSelection);
-  $("heat-mid").addEventListener("input",()=>updateHeatScale("mid"));$("heat-high").addEventListener("input",()=>updateHeatScale("high"));$("season-filter").addEventListener("change",()=>selectedIdx!=null&&recompute());$("season-mode").addEventListener("change",()=>selectedIdx!=null&&recompute());updateVisibilityValue();populateAreaOptions();
+  $("heat-mid").addEventListener("input",()=>updateHeatScale("mid"));$("heat-high").addEventListener("input",()=>updateHeatScale("high"));setupSeasonSelection("season-filter",()=>selectedIdx!=null&&recompute());setupSeasonSelection("study-country-seasons");$("season-mode").addEventListener("change",()=>selectedIdx!=null&&recompute());updateVisibilityValue();populateAreaOptions();
   ["f-grid","f-country","f-region","f-continent","top-only","top-area","top-value"].forEach(id=>$(id).addEventListener("change",refreshResults));
   $("top-scope").addEventListener("change",()=>{populateAreaOptions();refreshResults();});$("top-mode").addEventListener("change",()=>{updateVisibilityValue();refreshResults();});
   $("export-country-map").addEventListener("click",exportCountryMap);$("export-country-comparison").addEventListener("click",exportCountryComparison);$("open-compare-studio").addEventListener("click",openCompareStudio);$("open-compare-studio-global").addEventListener("click",openCompareStudio);$("close-compare-studio").addEventListener("click",closeCompareStudio);$("compare-studio").addEventListener("pointerdown",e=>{if(e.target===$("compare-studio"))closeCompareStudio();});document.querySelectorAll("[data-study-mode]").forEach(button=>button.addEventListener("click",()=>setStudyMode(button.dataset.studyMode)));setupStudySearch("left");setupStudySearch("right");setupCountryPicker("left");setupCountryPicker("right");$("study-country-pair-limit").addEventListener("change",event=>$("run-country-study").textContent=`Encontrar ${event.target.value} pares distintos`);$("run-city-study").addEventListener("click",runCityStudy);$("run-country-study").addEventListener("click",runCountryStudy);
@@ -480,13 +485,14 @@ function openCountryPairStudy(pair){
 function renderCountryStudy(result){
   const pairs=result.pairs.map((pair,index)=>`<li><button type="button" class="country-pair-item" data-country-pair="${index}"><i style="background:${STUDY_COLORS[index%STUDY_COLORS.length]}">${index+1}</i><span><b>${esc(pair.left.city_name)} ↔ ${esc(pair.right.city_name)}</b><small>${esc(pair.seasonal_alignment)} · ${pair.similarity_pct}% · ver estudio estacional</small></span><em>Ver</em></button></li>`).join("");
   const mapNote=result.pairs.length>10?`Los mapas muestran los primeros 10 de ${result.pairs.length} pares; la lista incluye todos los resultados.`:"Los números y colores vinculan cada ciudad en ambos mapas.";
-  const period=result.season&&result.season!=="annual"?`${SEASON_LABELS[result.season]} local con ${SEASON_LABELS[result.season].toLowerCase()} local`:"año completo";
+  const selected=Array.isArray(result.season)?result.season:result.season&&result.season!=="annual"?[result.season]:[];
+  const period=selected.length&&selected.length<SEASON_ORDER.length?`${selected.map(id=>SEASON_LABELS[id]).join(" + ")} locales equivalentes`:"año completo";
   $("country-study-output").innerHTML=`<p class="study-caption"><b>Período comparado: ${esc(period)}.</b> ${result.sampled?"Cruce amplio: se usó una muestra de ciudades con mayor población para mantener la respuesta ágil.":"Cruce exhaustivo de los pares disponibles."} ${mapNote}</p><div class="country-map-pair"><section><canvas id="study-country-map-left" width="980" height="650"></canvas></section><section><canvas id="study-country-map-right" width="980" height="650"></canvas></section></div><ol class="country-pair-list">${pairs}</ol>`;
   document.querySelectorAll("[data-country-pair]").forEach(button=>button.addEventListener("click",()=>openCountryPairStudy(result.pairs[Number(button.dataset.countryPair)])));
   drawStudyCountryMaps(result).catch(e=>setStatus(`No se pudieron dibujar los mapas: ${e.message}`,true));
 }
 async function runCountryStudy(){
-  const leftCountryId=$("study-country-left").value,rightCountryId=$("study-country-right").value,limit=Number($("study-country-pair-limit").value),season=$("study-country-season").value,button=$("run-country-study");button.disabled=true;setStatus("Buscando pares climáticos entre países…",true);
+  const leftCountryId=$("study-country-left").value,rightCountryId=$("study-country-right").value,limit=Number($("study-country-pair-limit").value),season=selectedSeasons("study-country-seasons"),button=$("run-country-study");button.disabled=true;setStatus("Buscando pares climáticos entre países…",true);
   try{const p=getParams(),result=await request("compareCountries",{leftCountryId,rightCountryId,mode:p.mode,season,weights:p.weights,limit},60000);renderCountryStudy(result);setStatus("Estudio de países listo");}catch(e){setStatus(`No se pudo comparar países: ${e.message}`,true)}finally{button.disabled=false;}
 }
 
