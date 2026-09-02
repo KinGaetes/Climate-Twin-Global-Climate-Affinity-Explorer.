@@ -7,8 +7,11 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",
 let cfg, positions, spatialOffsets, spatialIndices, regionCatalog = null;
 let worker, workerReady = false, selectedIdx = null, currentScores = null, selectedDetail = null, currentRankingRows = [];
 let studyCities = {left:null,right:null};
+let topReferenceRows=[];
 let hoveredIdx = -1;
 const cityMetaCache = new Map();
+const countryPickerViews={left:{lon:0,lat:18,zoom:1.55},right:{lon:0,lat:18,zoom:1.55}};
+const countryPickerTiles=new Map();
 let resolveWorkerReady; const workerReadyPromise = new Promise(resolve => { resolveWorkerReady = resolve; });
 let seq = 0, startupDone = false, rankingSeq = 0;
 const pending = new Map();
@@ -203,34 +206,83 @@ function updateVisibilityValue(){const mode=$("top-mode").value,input=$("top-val
 function populateAreaOptions(){const select=$("top-area"),scope=$("top-scope").value,previous=select.value;if(scope==="global"){select.innerHTML='<option value="">Todo el mundo</option>';select.disabled=true;return;}if(!regionCatalog){select.innerHTML='<option value="">Cargando áreas…</option>';select.disabled=true;return;}const rows=scope==="continent"?regionCatalog.continents:scope==="subcontinent"?regionCatalog.subcontinents:regionCatalog.countries;select.innerHTML="";rows.forEach(row=>{const option=document.createElement("option");option.value=row.id;option.textContent=row.label;select.appendChild(option);});select.disabled=false;if(rows.some(row=>row.id===previous))select.value=previous;}
 function normalizeCountryText(value){return String(value||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim();}
 function countryRowById(id){return regionCatalog?.countries.find(row=>row.id===String(id))||null;}
+function countryPickerWorld(lon,lat,zoom){
+  const scale=256*Math.pow(2,zoom),safeLat=clamp(Number(lat)||0,-85,85)*Math.PI/180;
+  return{x:(Number(lon)+180)/360*scale,y:(1-Math.log(Math.tan(Math.PI/4+safeLat/2))/Math.PI)/2*scale};
+}
+function countryPickerLonLat(x,y,zoom){
+  const scale=256*Math.pow(2,zoom),lon=x/scale*360-180,merc=Math.PI*(1-2*y/scale);
+  return{lon,lat:Math.atan(Math.sinh(merc))*180/Math.PI};
+}
+function countryPickerScreenPoint(side,lon,lat){
+  const canvas=$(`study-country-${side}-map`),view=countryPickerViews[side],center=countryPickerWorld(view.lon,view.lat,view.zoom),point=countryPickerWorld(lon,lat,view.zoom),world=256*Math.pow(2,view.zoom);
+  let dx=point.x-center.x;if(dx>world/2)dx-=world;if(dx<-world/2)dx+=world;
+  return{x:canvas.width/2+dx,y:canvas.height/2+point.y-center.y};
+}
+function countryPickerTile(tileZoom,x,y){
+  const tiles=1<<tileZoom,wrapped=((x%tiles)+tiles)%tiles;
+  if(y<0||y>=tiles)return null;
+  const key=`${tileZoom}/${wrapped}/${y}`,cached=countryPickerTiles.get(key);if(cached)return cached;
+  const pending={image:null};countryPickerTiles.set(key,pending);
+  fetch(`https://tile.openstreetmap.org/${tileZoom}/${wrapped}/${y}.png`).then(response=>{
+    if(!response.ok)throw new Error("tile unavailable");return response.blob();
+  }).then(blob=>createImageBitmap(blob)).then(image=>{pending.image=image;drawCountryPickerMap("left");drawCountryPickerMap("right");}).catch(()=>{countryPickerTiles.delete(key);});
+  return pending;
+}
 function drawCountryPickerMap(side,hoverId=""){
   const canvas=$(`study-country-${side}-map`);if(!canvas||!regionCatalog)return;
-  const ctx=canvas.getContext("2d"),width=canvas.width,height=canvas.height,selectedId=$(`study-country-${side}`).value;
-  ctx.clearRect(0,0,width,height);ctx.fillStyle="#8fd6dc";ctx.fillRect(0,0,width,height);
-  ctx.strokeStyle="rgba(255,255,255,.28)";ctx.lineWidth=1;for(let lon=-180;lon<=180;lon+=45){const x=(lon+180)/360*width;ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,height);ctx.stroke();}for(let lat=-60;lat<=60;lat+=30){const y=(90-lat)/180*height;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(width,y);ctx.stroke();}
-  regionCatalog.countries.forEach(row=>{if(row.lon==null||row.lat==null)return;const x=(row.lon+180)/360*width,y=(90-row.lat)/180*height,active=row.id===selectedId,hover=row.id===hoverId;ctx.beginPath();ctx.arc(x,y,active?5.2:hover?4.3:Math.min(3.1,1.2+Math.log10(row.city_count||1)*.36),0,Math.PI*2);ctx.fillStyle=active?(side==="left"?"#087e98":"#e77a38"):hover?"#fff":"rgba(10,83,101,.55)";ctx.fill();if(active){ctx.lineWidth=2;ctx.strokeStyle="#fff";ctx.stroke();}});
-  const selected=countryRowById(selectedId);if(selected){ctx.fillStyle="rgba(255,255,255,.9)";ctx.fillRect(8,8,Math.min(width-16,ctx.measureText(selected.label).width+18),20);ctx.fillStyle="#0b5365";ctx.font="700 10px system-ui, sans-serif";ctx.fillText(selected.label,17,22);}
+  const ctx=canvas.getContext("2d"),width=canvas.width,height=canvas.height,selectedId=$(`study-country-${side}`).value,view=countryPickerViews[side],tileZoom=Math.max(0,Math.floor(view.zoom)),tileScale=Math.pow(2,view.zoom-tileZoom),tileSize=256*tileScale,center=countryPickerWorld(view.lon,view.lat,view.zoom),left=center.x-width/2,top=center.y-height/2;
+  ctx.clearRect(0,0,width,height);ctx.fillStyle="#b8e5e2";ctx.fillRect(0,0,width,height);
+  const tileLeft=left/tileScale,tileTop=top/tileScale,startX=Math.floor(tileLeft/256),endX=Math.floor((tileLeft+width/tileScale)/256),startY=Math.floor(tileTop/256),endY=Math.floor((tileTop+height/tileScale)/256);
+  for(let tx=startX;tx<=endX;tx++)for(let ty=startY;ty<=endY;ty++){const tile=countryPickerTile(tileZoom,tx,ty);if(tile?.image)ctx.drawImage(tile.image,(tx*256-tileLeft)*tileScale,(ty*256-tileTop)*tileScale,tileSize,tileSize);}
+  ctx.fillStyle="rgba(7,70,82,.13)";ctx.fillRect(0,0,width,height);
+  regionCatalog.countries.forEach(row=>{if(row.lon==null||row.lat==null)return;const point=countryPickerScreenPoint(side,row.lon,row.lat);if(point.x<-10||point.x>width+10||point.y<-10||point.y>height+10)return;const active=row.id===selectedId,hover=row.id===hoverId;ctx.beginPath();ctx.arc(point.x,point.y,active?6:hover?4.8:Math.min(3.5,1.5+Math.log10(row.city_count||1)*.42),0,Math.PI*2);ctx.fillStyle=active?(side==="left"?"#087e98":"#e77a38"):hover?"#fff":"rgba(8,73,90,.68)";ctx.fill();if(active||hover){ctx.lineWidth=2;ctx.strokeStyle="#fff";ctx.stroke();}});
+  ctx.fillStyle="rgba(255,255,255,.87)";ctx.fillRect(8,height-25,150,17);ctx.fillStyle="#285f6b";ctx.font="600 9px system-ui, sans-serif";ctx.fillText("Arrastra - rueda: zoom - doble clic: inicio",14,height-13);
+  if(!hoverId){const selected=countryRowById(selectedId),note=$(`study-country-${side}-note`);if(selected&&note)note.textContent=`${Number(selected.city_count).toLocaleString("es-ES")} ciudades incluidas - arrastra o usa la rueda`;}
 }
 function countryAtMapPoint(side,event){
   const canvas=$(`study-country-${side}-map`),rect=canvas.getBoundingClientRect(),x=(event.clientX-rect.left)*canvas.width/rect.width,y=(event.clientY-rect.top)*canvas.height/rect.height;let closest=null,best=Infinity;
-  regionCatalog?.countries.forEach(row=>{if(row.lon==null||row.lat==null)return;const px=(row.lon+180)/360*canvas.width,py=(90-row.lat)/180*canvas.height,d=Math.hypot(px-x,py-y);if(d<best){best=d;closest=row;}});
-  return best<=12?closest:null;
+  regionCatalog?.countries.forEach(row=>{if(row.lon==null||row.lat==null)return;const point=countryPickerScreenPoint(side,row.lon,row.lat),d=Math.hypot(point.x-x,point.y-y);if(d<best){best=d;closest=row;}});
+  return best<=14?closest:null;
 }
 function setStudyCountry(side,id){
   const row=countryRowById(id),select=$(`study-country-${side}`);if(!row||!select)return;
   select.value=row.id;$(`study-country-${side}-search`).value=row.label;$(`study-country-${side}-note`).textContent=`${row.label} · ${Number(row.city_count).toLocaleString("es-ES")} ciudades incluidas`;drawCountryPickerMap(side);
 }
 function setupCountryPicker(side){
-  const input=$(`study-country-${side}-search`),select=$(`study-country-${side}`),canvas=$(`study-country-${side}-map`),note=$(`study-country-${side}-note`);if(!input||!select||!canvas)return;
-  const selectFromText=()=>{const query=normalizeCountryText(input.value),matches=(regionCatalog?.countries||[]).filter(row=>normalizeCountryText(row.label)===query);if(matches.length===1)setStudyCountry(side,matches[0].id);else if(query)note.textContent="Elige un país de las sugerencias o selecciona un punto del mapa.";};
-  input.addEventListener("change",selectFromText);input.addEventListener("keydown",event=>{if(event.key==="Enter"){event.preventDefault();selectFromText();}});select.addEventListener("change",()=>setStudyCountry(side,select.value));
-  canvas.addEventListener("pointermove",event=>{const row=countryAtMapPoint(side,event);canvas.style.cursor=row?"pointer":"crosshair";if(row){note.textContent=`${row.label} · ${Number(row.city_count).toLocaleString("es-ES")} ciudades · clic para elegir`;drawCountryPickerMap(side,row.id);}});canvas.addEventListener("pointerleave",()=>{canvas.style.cursor="";const selected=countryRowById(select.value);if(selected)note.textContent=`${selected.label} · ${Number(selected.city_count).toLocaleString("es-ES")} ciudades incluidas`;drawCountryPickerMap(side);});canvas.addEventListener("click",event=>{const row=countryAtMapPoint(side,event);if(row)setStudyCountry(side,row.id);});
+  {
+    const input=$(`study-country-${side}-search`),select=$(`study-country-${side}`),canvas=$(`study-country-${side}-map`),note=$(`study-country-${side}-note`);if(!input||!select||!canvas)return;
+    canvas.style.cursor="grab";
+    const chooseTypedCountry=()=>{const query=normalizeCountryText(input.value),matches=(regionCatalog?.countries||[]).filter(row=>normalizeCountryText(row.label)===query);if(matches.length===1)setStudyCountry(side,matches[0].id);else if(query)note.textContent="Elige un pais de las sugerencias o un punto de ciudades en el mapa.";};
+    input.addEventListener("change",chooseTypedCountry);
+    input.addEventListener("keydown",event=>{if(event.key==="Enter"){event.preventDefault();chooseTypedCountry();}});
+    select.addEventListener("change",()=>setStudyCountry(side,select.value));
+    let drag=null;
+    canvas.addEventListener("pointerdown",event=>{drag={x:event.clientX,y:event.clientY,lon:countryPickerViews[side].lon,lat:countryPickerViews[side].lat,moved:false};canvas.setPointerCapture(event.pointerId);canvas.style.cursor="grabbing";});
+    canvas.addEventListener("pointermove",event=>{
+      if(drag){const rect=canvas.getBoundingClientRect(),dx=(event.clientX-drag.x)*canvas.width/rect.width,dy=(event.clientY-drag.y)*canvas.height/rect.height;if(Math.abs(dx)+Math.abs(dy)>3)drag.moved=true;const start=countryPickerWorld(drag.lon,drag.lat,countryPickerViews[side].zoom),next=countryPickerLonLat(start.x-dx,start.y-dy,countryPickerViews[side].zoom);countryPickerViews[side].lon=next.lon;countryPickerViews[side].lat=clamp(next.lat,-80,80);drawCountryPickerMap(side);return;}
+      const row=countryAtMapPoint(side,event);canvas.style.cursor=row?"pointer":"grab";if(row){note.textContent=`${row.label} - ${Number(row.city_count).toLocaleString("es-ES")} ciudades - clic para elegir`;drawCountryPickerMap(side,row.id);}else drawCountryPickerMap(side);
+    });
+    const finish=event=>{if(!drag)return;const wasDrag=drag.moved;drag=null;canvas.style.cursor="grab";if(!wasDrag){const row=countryAtMapPoint(side,event);if(row){setStudyCountry(side,row.id);return;}}drawCountryPickerMap(side);};
+    canvas.addEventListener("pointerup",finish);canvas.addEventListener("pointercancel",finish);
+    canvas.addEventListener("pointerleave",()=>{if(!drag){canvas.style.cursor="grab";drawCountryPickerMap(side);}});
+    canvas.addEventListener("wheel",event=>{event.preventDefault();countryPickerViews[side].zoom=clamp(countryPickerViews[side].zoom+(event.deltaY<0?.28:-.28),1.2,5.5);drawCountryPickerMap(side);},{passive:false});
+    canvas.addEventListener("dblclick",event=>{event.preventDefault();countryPickerViews[side]={lon:0,lat:18,zoom:1.55};drawCountryPickerMap(side);});
+  }
 }
 function populateStudyCountryPicker(side){
   const select=$(`study-country-${side}`),list=$(`study-country-${side}-options`),previous=select.value;select.innerHTML="";list.innerHTML="";regionCatalog.countries.forEach(row=>{const option=document.createElement("option");option.value=row.id;option.textContent=row.label;select.appendChild(option);const suggestion=document.createElement("option");suggestion.value=row.label;list.appendChild(suggestion);});const fallback=side==="right"&&regionCatalog.countries.length>1?regionCatalog.countries[1].id:regionCatalog.countries[0]?.id;setStudyCountry(side,regionCatalog.countries.some(row=>row.id===previous)?previous:fallback);
 }
 function populateCountryDashboard(){if(!regionCatalog)return;["export-country","compare-country-left","compare-country-right"].forEach(id=>{const select=$(id),previous=select.value;select.innerHTML="";regionCatalog.countries.forEach(row=>{const option=document.createElement("option");option.value=row.id;option.textContent=row.label;select.appendChild(option);});if(regionCatalog.countries.some(row=>row.id===previous))select.value=previous;else if(id==="compare-country-right"&&regionCatalog.countries.length>1)select.selectedIndex=1;});populateStudyCountryPicker("left");populateStudyCountryPicker("right");}
 async function loadRegionCatalog(){try{regionCatalog=await request("regionCatalog");populateAreaOptions();populateCountryDashboard();}catch(e){setStatus(`No se pudo cargar el catálogo geográfico: ${e.message}`,true)}}
+function setupTopReferenceCompare(){
+  $("top-list").addEventListener("click",event=>{
+    const item=event.target.closest(".top-item");if(!item)return;
+    const rank=[...$("top-list").querySelectorAll(".top-item")].indexOf(item),candidate=topReferenceRows[rank];
+    if(!candidate)return;
+    event.preventDefault();event.stopPropagation();openReferenceComparison(candidate);
+  },true);
+}
 function setupControls(){
   const sliders=$("sliders");groups.forEach(g=>{const row=document.createElement("label");row.className="slider-row";row.innerHTML=`<span>${groupLabels[g]}</span><input id="w-${g}" type="range" min="0" max="3" step=".05"><output id="o-${g}"></output>`;sliders.appendChild(row);row.querySelector("input").addEventListener("input",e=>$(`o-${g}`).textContent=Number(e.target.value).toFixed(2));});
   $("heat-mid").value=65;$("heat-high").value=75;
@@ -274,7 +326,7 @@ async function refreshResults(){
     $("visibility-note").textContent=visibility.onlyTop
       ? `El mapa muestra únicamente ${modeText} dentro de ${areaLabel()}.`
       : `La lista compara ${Number(result.total).toLocaleString("es-ES")} ciudades de ${areaLabel()}; el mapa conserva todas las ciudades elegibles.`;
-    const box=$("top-list");box.innerHTML="";
+    const box=$("top-list");box.innerHTML="";topReferenceRows=result.rows;
     result.rows.forEach((r,i)=>{const el=document.createElement("button");el.className="top-item";const cls=scoreClass(r.similarity_pct);const factors=(r.factors||[]).map(f=>`${esc(f.label)} ${f.similarity_pct}%`).join(" · ");el.innerHTML=`<span class="rank">${i+1}</span><span class="top-copy"><b>${esc(r.city_name)}</b><small>${esc([r.admin1_name,r.country_name].filter(Boolean).join(" · "))}</small><small class="factor-line">${esc(r.seasonal_alignment||"")} · ${factors}</small></span><span class="score ${cls}">${r.similarity_pct}%</span>`;el.addEventListener("click",()=>selectCity(r.idx,true));box.appendChild(el);});
   }catch(e){setStatus(e.message,true)}
 }
@@ -282,6 +334,18 @@ async function refreshResults(){
 const STUDY_COLORS=["#e63946","#f4a261","#e9c46a","#2a9d8f","#277da1","#7b2cbf","#ff5d8f","#6a994e","#bc6c25","#3a86ff"];
 const SEASON_LABELS={summer:"Verano",autumn:"Otoño",winter:"Invierno",spring:"Primavera"};
 const ANNUAL_WORDS={temperature:"más cálida",rain:"más lluviosa",humidity:"más húmeda",wind:"más ventosa",cloud:"más nubosa",sun:"con más horas de sol",solar:"con mayor energía solar"};
+async function openReferenceComparison(candidate){
+  if(selectedIdx==null||!candidate)return;
+  try{
+    const reference=selectedDetail||await request("detail",{idx:selectedIdx});
+    if(selectedIdx!==reference.idx&&reference.idx!=null)return;
+    studyCities.left={idx:selectedIdx,...reference};studyCities.right={...candidate};
+    $("study-city-left").value=`${reference.city_name} · ${reference.country_name}`;
+    $("study-city-right").value=`${candidate.city_name} · ${candidate.country_name}`;
+    openCompareStudio();setStudyMode("cities");$("compare-studio").querySelector(".compare-window").scrollTop=0;
+    await runCityStudy();
+  }catch(e){setStatus(`Could not open the comparison: ${e.message}`,true);}
+}
 function openCompareStudio(){
   $("compare-studio").classList.remove("hidden");
   if(selectedDetail&&!studyCities.left){studyCities.left={idx:selectedIdx,...selectedDetail};$("study-city-left").value=`${selectedDetail.city_name} · ${selectedDetail.country_name}`;}
@@ -368,7 +432,7 @@ async function init(){
     if(location.protocol==="file:") throw new Error("No abras index.html con doble clic. Ejecuta start_windows.bat / start_mac_linux.sh o `python serve.py`.");
     const cr=await fetch(new URL("config.json",DATA));if(!cr.ok)throw new Error(`config.json: HTTP ${cr.status}`);cfg=await cr.json();
     setStatus("Cargando coordenadas…",true);const [pb,ob,ib]=await Promise.all([ab(cfg.files.positions),ab(cfg.files.spatial_offsets),ab(cfg.files.spatial_indices)]);positions=new Float32Array(pb);spatialOffsets=new Uint32Array(ob);spatialIndices=new Uint32Array(ib);if(positions.length!==cfg.city_count*2)throw new Error("Coordenadas desalineadas");groups=cfg.groups.map(group=>group.id);groupLabels=Object.fromEntries(cfg.groups.map(group=>[group.id,group.label]));
-    mapView=new RasterMap($("map"),$("city-canvas"),positions,spatialOffsets,spatialIndices,cfg.spatial);setupControls();setupSearch();createWorker();startupDone=true;$("city-total").textContent=cfg.city_count.toLocaleString("es-ES");setStatus("Mapa listo");
+    mapView=new RasterMap($("map"),$("city-canvas"),positions,spatialOffsets,spatialIndices,cfg.spatial);setupControls();setupTopReferenceCompare();setupSearch();createWorker();startupDone=true;$("city-total").textContent=cfg.city_count.toLocaleString("es-ES");setStatus("Mapa listo");
   }catch(e){console.error(e);$("fatal").textContent=e.message;$("fatal").classList.remove("hidden");setStatus("No se pudo iniciar",true);}
 }
 window.addEventListener("error",e=>{if(!startupDone)setStatus("Error de inicio: "+(e.message||"desconocido"),true)});
