@@ -14,6 +14,7 @@
       <div id="map" class="map" aria-label="Mapa mundial interactivo">
         <div class="ocean-glow"></div>
         <div id="tiles" class="tiles" aria-hidden="true"></div>
+        <canvas id="geo-grid-canvas" aria-hidden="true"></canvas>
         <canvas id="city-canvas"></canvas>
         <div id="map-labels" class="map-labels" aria-hidden="true"></div>
         <div id="selected-marker" class="selected-marker hidden" aria-hidden="true"></div>
@@ -174,6 +175,10 @@
             </details>
           </section>
         </section>
+      </div>
+      <div class="geo-overlay-controls glass" aria-label="Capas geográficas">
+        <label><input id="toggle-equator" type="checkbox" checked> Ecuador</label>
+        <label><input id="toggle-grid" type="checkbox"> Meridianos y paralelos</label>
       </div>
       <footer class="sidebar-signature" aria-label="Kinsei">
         <img src="assets/kinsei.svg" alt="Kinsei">

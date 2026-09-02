@@ -80,8 +80,8 @@ function createWorker(){
 }
 
 class RasterMap {
-  constructor(el,canvas,positions,offsets,indices,spatialCfg){
-    this.el=el; this.canvas=canvas; this.positions=positions; this.offsets=offsets; this.indices=indices; this.spatial=spatialCfg;
+  constructor(el,canvas,gridCanvas,positions,offsets,indices,spatialCfg){
+    this.el=el; this.canvas=canvas; this.gridCanvas=gridCanvas; this.gridCtx=gridCanvas.getContext("2d"); this.showGeoGrid=false;this.showEquator=true;this.positions=positions; this.offsets=offsets; this.indices=indices; this.spatial=spatialCfg;
     this.center={x:this.mx(-8),y:this.my(18)}; this.zoom=1.35; this.minZoom=1; this.maxZoom=11;
     this.tiles=new Map(); this.tileLayer=$("tiles"); this.selectedMarker=$("selected-marker");this.labelLayer=$("map-labels");
     this.drag=null; this.raf=0; this.heatmap=false; this.scoreBuffer=null;this.labelKey="";this.labelRows=[];this.labelNodes=new Map();this.labelTimer=0;
@@ -113,9 +113,17 @@ class RasterMap {
     this.el.addEventListener("contextmenu",e=>{e.preventDefault();clearSelection();});this.el.addEventListener("pointerleave",()=>setMapHover(-1));
   }
   normalizeCenter(){this.center.x=((this.center.x%1)+1)%1;this.center.y=((this.center.y%1)+1)%1}
-  resize(){const dpr=Math.min(devicePixelRatio||1,2);this.w=this.el.clientWidth;this.h=this.el.clientHeight;this.canvas.width=Math.max(1,Math.round(this.w*dpr));this.canvas.height=Math.max(1,Math.round(this.h*dpr));this.canvas.style.width=this.w+"px";this.canvas.style.height=this.h+"px";this.dpr=dpr;this.schedule();}
+  resize(){const dpr=Math.min(devicePixelRatio||1,2);this.w=this.el.clientWidth;this.h=this.el.clientHeight;this.canvas.width=Math.max(1,Math.round(this.w*dpr));this.canvas.height=Math.max(1,Math.round(this.h*dpr));this.canvas.style.width=this.w+"px";this.canvas.style.height=this.h+"px";this.gridCanvas.width=this.canvas.width;this.gridCanvas.height=this.canvas.height;this.gridCanvas.style.width=this.w+"px";this.gridCanvas.style.height=this.h+"px";this.dpr=dpr;this.schedule();}
   schedule(){if(this.raf)return;this.raf=requestAnimationFrame(()=>{this.raf=0;this.render();});}
-  render(){this.renderTiles();this.renderPoints();this.renderLabels();this.positionMarker();}
+  render(){this.renderTiles();this.renderGeoGrid();this.renderPoints();this.renderLabels();this.positionMarker();}
+  setGeoOverlay(grid,equator){this.showGeoGrid=Boolean(grid);this.showEquator=Boolean(equator);this.schedule();}
+  geoY(lat){let dy=this.my(lat)-this.center.y;if(dy>.5)dy-=1;if(dy<-.5)dy+=1;return this.h/2+dy*this.world()}
+  geoX(lon){let dx=this.mx(lon)-this.center.x;if(dx>.5)dx-=1;if(dx<-.5)dx+=1;return this.w/2+dx*this.world()}
+  renderGeoGrid(){
+    const ctx=this.gridCtx;ctx.setTransform(this.dpr,0,0,this.dpr,0,0);ctx.clearRect(0,0,this.w,this.h);if(!this.showGeoGrid&&!this.showEquator)return;
+    if(this.showGeoGrid){const step=this.zoom<2.4?30:this.zoom<4.2?15:10;ctx.lineWidth=1;ctx.strokeStyle="rgba(15,92,110,.20)";ctx.setLineDash([3,6]);for(let lon=-180;lon<180;lon+=step){const x=this.geoX(lon);if(x<-1||x>this.w+1)continue;ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,this.h);ctx.stroke();}for(let lat=-75;lat<=75;lat+=step){if(lat===0)continue;const y=this.geoY(lat);if(y<-1||y>this.h+1)continue;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(this.w,y);ctx.stroke();}ctx.setLineDash([]);}
+    if(this.showEquator){const y=this.geoY(0);if(y>=-3&&y<=this.h+3){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(this.w,y);ctx.lineWidth=2;ctx.strokeStyle="rgba(255,230,113,.92)";ctx.shadowColor="rgba(8,73,90,.38)";ctx.shadowBlur=3;ctx.stroke();ctx.shadowBlur=0;}}
+  }
   renderTiles(){
     const z=Math.floor(this.zoom), scale=Math.pow(2,this.zoom-z), n=Math.pow(2,z), tile=256*scale, centerX=this.center.x*n*256, centerY=this.center.y*n*256;
     const x0=Math.floor((centerX-this.w/(2*scale))/256)-1,x1=Math.floor((centerX+this.w/(2*scale))/256)+1,y0=Math.floor((centerY-this.h/(2*scale))/256)-1,y1=Math.floor((centerY+this.h/(2*scale))/256)+1;const keep=new Set();
@@ -318,6 +326,10 @@ function setupTopReferenceCompare(){
     event.preventDefault();event.stopPropagation();openReferenceComparison(candidate);
   },true);
 }
+function setupGeoOverlayControls(){
+  const grid=$("toggle-grid"),equator=$("toggle-equator"),sync=()=>mapView.setGeoOverlay(grid.checked,equator.checked);
+  grid.addEventListener("change",sync);equator.addEventListener("change",sync);sync();
+}
 function setupControls(){
   const sliders=$("sliders");groups.forEach(g=>{const row=document.createElement("label");row.className="slider-row";row.innerHTML=`<span>${groupLabels[g]}</span><input id="w-${g}" type="range" min="0" max="3" step=".05"><output id="o-${g}"></output>`;sliders.appendChild(row);row.querySelector("input").addEventListener("input",e=>$(`o-${g}`).textContent=Number(e.target.value).toFixed(2));});
   $("heat-mid").value=65;$("heat-high").value=75;
@@ -485,7 +497,7 @@ async function init(){
     if(location.protocol==="file:") throw new Error("No abras index.html con doble clic. Ejecuta start_windows.bat / start_mac_linux.sh o `python serve.py`.");
     const cr=await fetch(new URL("config.json",DATA));if(!cr.ok)throw new Error(`config.json: HTTP ${cr.status}`);cfg=await cr.json();
     setStatus("Cargando coordenadas…",true);const [pb,ob,ib]=await Promise.all([ab(cfg.files.positions),ab(cfg.files.spatial_offsets),ab(cfg.files.spatial_indices)]);positions=new Float32Array(pb);spatialOffsets=new Uint32Array(ob);spatialIndices=new Uint32Array(ib);if(positions.length!==cfg.city_count*2)throw new Error("Coordenadas desalineadas");groups=cfg.groups.map(group=>group.id);groupLabels=Object.fromEntries(cfg.groups.map(group=>[group.id,group.label]));
-    mapView=new RasterMap($("map"),$("city-canvas"),positions,spatialOffsets,spatialIndices,cfg.spatial);setupControls();setupTopReferenceCompare();setupSearch();loadCountryShapes();createWorker();startupDone=true;$("city-total").textContent=cfg.city_count.toLocaleString("es-ES");setStatus("Mapa listo");
+    mapView=new RasterMap($("map"),$("city-canvas"),$("geo-grid-canvas"),positions,spatialOffsets,spatialIndices,cfg.spatial);setupControls();setupGeoOverlayControls();setupTopReferenceCompare();setupSearch();loadCountryShapes();createWorker();startupDone=true;$("city-total").textContent=cfg.city_count.toLocaleString("es-ES");setStatus("Mapa listo");
   }catch(e){console.error(e);$("fatal").textContent=e.message;$("fatal").classList.remove("hidden");setStatus("No se pudo iniciar",true);}
 }
 window.addEventListener("error",e=>{if(!startupDone)setStatus("Error de inicio: "+(e.message||"desconocido"),true)});

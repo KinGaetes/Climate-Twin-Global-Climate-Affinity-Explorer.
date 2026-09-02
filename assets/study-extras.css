@@ -4,6 +4,10 @@
 .season-scan-item span{min-width:0}
 .country-picker-map{height:auto;aspect-ratio:112/43}
 .country-picker-tooltip{position:fixed;z-index:90;max-width:220px;border:1px solid rgba(11,126,142,.3);border-radius:8px;background:rgba(247,255,252,.96);box-shadow:0 8px 22px rgba(8,57,67,.22);padding:6px 8px;color:#164c58;font-size:10px;font-weight:700;pointer-events:none}
+#geo-grid-canvas{position:absolute;inset:0;pointer-events:none}
+.geo-overlay-controls{position:absolute;right:18px;bottom:14px;z-index:7;display:flex;align-items:center;gap:10px;border-radius:12px;padding:7px 10px;color:#456d76;font-size:9px;font-weight:700}
+.geo-overlay-controls label{display:flex;align-items:center;gap:5px;cursor:pointer;white-space:nowrap}
+.geo-overlay-controls input{margin:0;accent-color:#0aaeb4}
 .sidebar{display:flex;flex-direction:column;overflow:hidden}
 .sidebar-inner{flex:1 1 auto;overflow:auto}
 .sidebar-signature{display:flex;align-items:center;justify-content:flex-end;min-height:34px;padding:5px 18px 7px;border-top:1px solid rgba(54,139,137,.15);background:rgba(247,255,252,.68)}
@@ -16,5 +20,5 @@
 .compare-launch:hover{transform:translateY(-2px);filter:saturate(1.16) brightness(1.08);box-shadow:0 15px 30px rgba(7,117,150,.42)}
 .compare-launch:focus-visible{outline:3px solid rgba(184,255,49,.9);outline-offset:3px}
 @media(max-width:980px){.compare-launch{top:74px;right:18px}.brand{width:min(260px,calc(100% - 40px))}.search-wrap{width:min(430px,calc(100% - 230px))}}
-@media(max-width:720px){.sidebar{overflow:hidden}.sidebar-signature{display:none}.brand{width:calc(100% - 20px)}.search-wrap{width:auto}.compare-launch{top:120px;right:10px;min-height:40px;padding:0 12px;font-size:10px}}
+@media(max-width:720px){.sidebar{overflow:hidden}.sidebar-signature{display:none}.brand{width:calc(100% - 20px)}.search-wrap{width:auto}.compare-launch{top:120px;right:10px;min-height:40px;padding:0 12px;font-size:10px}.geo-overlay-controls{right:10px;bottom:10px;gap:7px;padding:6px 8px;font-size:8px}}
 @media(max-width:720px){.season-scan-item{grid-template-columns:58px minmax(0,1fr)}}
