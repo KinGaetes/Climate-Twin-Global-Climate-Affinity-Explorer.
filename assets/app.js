@@ -118,7 +118,7 @@ class RasterMap {
   render(){this.renderTiles();this.renderPoints();this.renderLabels();this.positionMarker();}
   renderTiles(){
     const z=Math.floor(this.zoom), scale=Math.pow(2,this.zoom-z), n=Math.pow(2,z), tile=256*scale, centerX=this.center.x*n*256, centerY=this.center.y*n*256;
-    const x0=Math.floor((centerX-this.w/(2*scale))/256)-1,x1=Math.floor((centerX+this.w/(2*scale))/256)+1,y0=Math.floor((centerY-this.h/(2*scale))/256)-1,y1=Math.floor((centerY+this.h/(2*scale))/256)+1);const keep=new Set();
+    const x0=Math.floor((centerX-this.w/(2*scale))/256)-1,x1=Math.floor((centerX+this.w/(2*scale))/256)+1,y0=Math.floor((centerY-this.h/(2*scale))/256)-1,y1=Math.floor((centerY+this.h/(2*scale))/256)+1;const keep=new Set();
     for(let ty=y0;ty<=y1;ty++)for(let tx=x0;tx<=x1;tx++){const wx=((tx%n)+n)%n,wy=((ty%n)+n)%n,key=`${z}/${wx}/${wy}/${tx}/${ty}`;keep.add(key);let img=this.tiles.get(key);if(!img){img=document.createElement("img");img.alt="";img.draggable=false;img.src=`https://tile.openstreetmap.org/${z}/${wx}/${wy}.png`;img.onerror=()=>img.classList.add("tile-failed");this.tileLayer.appendChild(img);this.tiles.set(key,img);}img.style.width=tile+"px";img.style.height=tile+"px";img.style.transform=`translate(${(tx*256-centerX)*scale+this.w/2}px,${(ty*256-centerY)*scale+this.h/2}px)`;}
     for(const [k,img] of this.tiles)if(!keep.has(k)){img.remove();this.tiles.delete(k);}
   }
