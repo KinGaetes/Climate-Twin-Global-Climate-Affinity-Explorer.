@@ -359,11 +359,21 @@ async function rank(idx, limit, filters, visibility) {
 }
 
 async function regionCatalog() {
-  await light();
+  await Promise.all([light(), loadPositions()]);
+  const count = new Uint32Array(codebooks.countries.length);
+  const lon = new Float64Array(codebooks.countries.length);
+  const lat = new Float64Array(codebooks.countries.length);
+  for (let idx = 0; idx < country.length; idx++) {
+    const countryId = country[idx];
+    if (!countryId) continue;
+    count[countryId]++;
+    lon[countryId] += positions[idx * 2];
+    lat[countryId] += positions[idx * 2 + 1];
+  }
   return {
     continents: codebooks.continents.map((label, id) => ({id: String(id), label})).filter(row => row.id !== "0" && row.label),
     subcontinents: (self.NEO_SUBREGIONS || []).map(({id, label}) => ({id, label})),
-    countries: codebooks.countries.map((label, id) => ({id: String(id), label})).filter(row => row.id !== "0" && row.label).sort((a, b) => a.label.localeCompare(b.label))
+    countries: codebooks.countries.map((label, id) => ({id: String(id), label, lon: count[id] ? lon[id] / count[id] : null, lat: count[id] ? lat[id] / count[id] : null, city_count: count[id]})).filter(row => row.id !== "0" && row.label && row.city_count).sort((a, b) => a.label.localeCompare(b.label))
   };
 }
 
@@ -405,10 +415,11 @@ function pairScore(leftIdx, rightIdx, mode, weights, season = "annual") {
   return {score: Math.max(0, Math.min(100, Math.round(100 * Math.exp(-cfg.score_alpha * Math.sqrt(d2 / sw))))), shift};
 }
 
-async function compareCountries(leftCountryId, rightCountryId, mode, weights, season = "annual") {
+async function compareCountries(leftCountryId, rightCountryId, mode, weights, season = "annual", limit = 10) {
   await Promise.all([light(), loadFeatures(), loadPositions()]);
   const leftId = Number(leftCountryId), rightId = Number(rightCountryId);
   if (!leftId || !rightId || leftId === rightId) throw new Error("Elige dos países distintos.");
+  const requestedLimit = Math.max(1, Math.min(50, Math.round(Number(limit) || 10)));
   let left = countryIndices(leftId), right = countryIndices(rightId);
   const totalPairs = left.length * right.length, exactLimit = 1000000;
   let sampled = false;
@@ -416,7 +427,7 @@ async function compareCountries(leftCountryId, rightCountryId, mode, weights, se
     const perCountryCap = Math.floor(Math.sqrt(exactLimit));
     left = countryIndices(leftId, perCountryCap); right = countryIndices(rightId, perCountryCap); sampled = true;
   }
-  const best = [], reserve = 400;
+  const best = [], reserve = Math.max(400, requestedLimit * 12);
   let lowest = -1, lowestScore = -Infinity;
   for (const leftIdx of left) for (const rightIdx of right) {
     const pair = pairScore(leftIdx, rightIdx, mode, weights, season);
@@ -439,9 +450,9 @@ async function compareCountries(leftCountryId, rightCountryId, mode, weights, se
   for (const pair of best) {
     if (usedLeft.has(pair.leftIdx) || usedRight.has(pair.rightIdx)) continue;
     usedLeft.add(pair.leftIdx); usedRight.add(pair.rightIdx); pairs.push(pair);
-    if (pairs.length === 10) break;
+    if (pairs.length === requestedLimit) break;
   }
-  return {leftCountry: codebooks.countries[leftId], rightCountry: codebooks.countries[rightId], leftBounds: boundsForIndices(countryIndices(leftId)), rightBounds: boundsForIndices(countryIndices(rightId)), sampled, pairs: pairs.map(pair => ({similarity_pct: pair.score, seasonal_alignment: pair.shift ? "hemisferio opuesto" : "mismo calendario", left: detailLite(pair.leftIdx), right: detailLite(pair.rightIdx)}))};
+  return {leftCountry: codebooks.countries[leftId], rightCountry: codebooks.countries[rightId], leftBounds: boundsForIndices(countryIndices(leftId)), rightBounds: boundsForIndices(countryIndices(rightId)), sampled, requestedLimit, pairs: pairs.map(pair => ({similarity_pct: pair.score, seasonal_alignment: pair.shift ? "hemisferio opuesto" : "mismo calendario", left: detailLite(pair.leftIdx), right: detailLite(pair.rightIdx)}))};
 }
 
 const ANNUAL_METRICS = [
@@ -535,7 +546,7 @@ onmessage = async e => {
     if (m.type === "regionCatalog") return postMessage({type: "regionCatalogResult", id: m.id, result: await regionCatalog()});
     if (m.type === "compute") return compute(m.idx, m.mode, m.weights, m.season || "annual");
     if (m.type === "countryTop") return postMessage({type: "countryTopResult", id: m.id, result: await countryTop(m.idx, m.countryId, m.limit || 10, m.filters || {})});
-    if (m.type === "compareCountries") return postMessage({type: "countryComparisonResult", id: m.id, result: await compareCountries(m.leftCountryId, m.rightCountryId, m.mode || "adaptive", m.weights || [], m.season || "annual")});
+    if (m.type === "compareCountries") return postMessage({type: "countryComparisonResult", id: m.id, result: await compareCountries(m.leftCountryId, m.rightCountryId, m.mode || "adaptive", m.weights || [], m.season || "annual", m.limit || 10)});
     if (m.type === "compareCities") return postMessage({type: "cityComparisonResult", id: m.id, result: await compareCities(m.leftIdx, m.rightIdx, m.mode || "adaptive", m.weights || [], m.season || "annual")});
     if (m.type === "rank") {
       const result = await rank(m.idx, m.limit || 10, m.filters || {}, m.visibility || {});

@@ -197,11 +197,26 @@
       </section>
       <section id="study-countries" class="study-section hidden">
         <div class="country-pickers">
-          <label>País A<select id="study-country-left"></select></label>
-          <label>País B<select id="study-country-right"></select></label>
+          <div class="country-picker">
+            <label for="study-country-left-search">País A</label>
+            <input id="study-country-left-search" list="study-country-left-options" autocomplete="off" placeholder="Busca o elige en el mapa">
+            <datalist id="study-country-left-options"></datalist>
+            <select id="study-country-left" aria-label="País A"></select>
+            <canvas id="study-country-left-map" class="country-picker-map" width="560" height="180" aria-label="Mapa de selección de País A"></canvas>
+            <p id="study-country-left-note" class="country-picker-note">Escribe un país o selecciona su punto de ciudades en el mapa.</p>
+          </div>
+          <div class="country-picker">
+            <label for="study-country-right-search">País B</label>
+            <input id="study-country-right-search" list="study-country-right-options" autocomplete="off" placeholder="Busca o elige en el mapa">
+            <datalist id="study-country-right-options"></datalist>
+            <select id="study-country-right" aria-label="País B"></select>
+            <canvas id="study-country-right-map" class="country-picker-map" width="560" height="180" aria-label="Mapa de selección de País B"></canvas>
+            <p id="study-country-right-note" class="country-picker-note">Escribe un país o selecciona su punto de ciudades en el mapa.</p>
+          </div>
         </div>
+        <label class="country-limit-label" for="study-country-pair-limit">Pares a mostrar<select id="study-country-pair-limit"><option value="10">Top 10 (rápido)</option><option value="25">Top 25</option><option value="50">Top 50</option></select></label>
         <button id="run-country-study" class="primary-btn">Encontrar 10 pares distintos</button>
-        <div id="country-study-output" class="study-output"><p class="model-note">Los mapas encuadrarán ambos países y conectarán cada par mediante color y número.</p></div>
+        <div id="country-study-output" class="study-output"><p class="model-note">Los mapas muestran los primeros 10 pares. Selecciona un par de la lista para abrir automáticamente su comparación estacional entre urbes.</p></div>
       </section>
     </section>
   </div>
