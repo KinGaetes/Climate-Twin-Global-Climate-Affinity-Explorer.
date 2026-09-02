@@ -274,13 +274,35 @@ function annualSentence(row,data){
   if(delta<Math.pow(10,-precision)/2)return `${row.label}: valores prácticamente iguales.`;
   return `${winner} es ${ANNUAL_WORDS[row.id]||"más alta"} por ${studyNumber(delta,precision)} ${row.unit}.`;
 }
+function thermalRange(stats){
+  if(!stats||stats.min==null||stats.max==null)return "Rango térmico no disponible";
+  return `${studyNumber(stats.min)}–${studyNumber(stats.max)} °C · oscilación ${studyNumber(stats.range)} °C`;
+}
+function seasonalSentence(row,data){
+  const thermal=row.thermal||{},left=thermal.left||{},right=thermal.right||{};
+  if(left.mean==null||right.mean==null)return `${SEASON_LABELS[row.id]}: temperatura estacional no disponible.`;
+  const delta=right.mean-left.mean,warmer=delta>0?data.right.city_name:data.left.city_name;
+  const same=Math.abs(delta)<.25;
+  const temperature=same?"las temperaturas estacionales son muy similares":`${warmer} es ${studyNumber(Math.abs(delta))} °C más cálida`;
+  const rangeGap=(right.range==null||left.range==null)?"":` · diferencia de oscilación ${studyNumber(Math.abs(right.range-left.range))} °C`;
+  return `${SEASON_LABELS[row.id]}: ${temperature}; afinidad ${row.score}%${rangeGap}.`;
+}
 function renderCityStudy(data){
   const panels=[data.left,data.right].map(city=>`<article class="study-city-card"><p class="eyebrow">${esc(city.country_name||"Urbe")}</p><h3>${esc(city.city_name)}</h3><p>${esc(city.admin1_name||"")}</p></article>`).join("");
   const domains=data.domains.map(row=>`<div class="domain-row"><span>${esc(row.label)}</span><b>${row.similarity_pct}%</b><i><em style="width:${row.similarity_pct}%"></em></i></div>`).join("");
   const seasons=data.seasons.map(row=>`<div class="season-row"><span>${SEASON_LABELS[row.id]}</span><i><em style="width:${row.score}%"></em></i><b>${row.score}%</b></div>`).join("");
+  const seasonCards=data.seasons.map(row=>{
+    const thermal=row.thermal||{},left=thermal.left||{},right=thermal.right||{};
+    const difference=left.mean==null||right.mean==null?null:right.mean-left.mean;
+    const differenceText=difference==null?"—":`${difference>0?"+":""}${studyNumber(difference)} °C`;
+    const weakest=[...(row.domains||[])].sort((a,b)=>a.similarity_pct-b.similarity_pct).slice(0,3).map(domain=>`<span class="season-domain"><b>${esc(domain.label)}</b>${domain.similarity_pct}%</span>`).join("");
+    return `<article class="season-card"><header><div><p class="eyebrow">${SEASON_LABELS[row.id]} local de ${esc(data.left.city_name)}</p><h3>${row.score}% de afinidad</h3></div><span class="season-alignment">${esc(row.seasonal_alignment)}</span></header><div class="season-temperature"><div><span>${esc(data.left.city_name)}</span><b>${studyNumber(left.mean)} °C</b><small>${thermalRange(left)}</small></div><div><span>${esc(data.right.city_name)}</span><b>${studyNumber(right.mean)} °C</b><small>${thermalRange(right)}</small></div><strong>${differenceText}<small>B − A</small></strong></div><p class="season-insight">${esc(seasonalSentence(row,data))}</p><div class="season-domains">${weakest}</div></article>`;
+  }).join("");
   const annual=data.annual.map(row=>{const digits=row.id==="rain"?0:1,diff=row.difference==null?"—":`${row.difference>0?"+":""}${studyNumber(row.difference,digits)} ${row.unit}`;return `<tr><th>${esc(row.label)}</th><td>${studyNumber(row.left,digits)} ${row.unit}</td><td>${studyNumber(row.right,digits)} ${row.unit}</td><td>${diff}</td></tr>`;}).join("");
   const reading=data.annual.map(row=>`<li>${esc(annualSentence(row,data))}</li>`).join("");
-  $("city-study-output").innerHTML=`<div class="study-city-head">${panels}<div class="study-score"><b>${data.similarity_pct}%</b><span>afinidad en el período elegido · ${esc(data.seasonal_alignment)}</span></div></div><div class="study-grid"><section><h3>Todos los dominios</h3>${domains}</section><section><h3>Afinidad por estación</h3><p class="study-caption">Cada estación se calcula como temporada local de ${esc(data.left.city_name)}.</p>${seasons}</section></div><section class="annual-table-wrap"><h3>Valores anuales y diferencia</h3><table class="annual-table"><thead><tr><th>Variable</th><th>${esc(data.left.city_name)}</th><th>${esc(data.right.city_name)}</th><th>B − A</th></tr></thead><tbody>${annual}</tbody></table></section><section class="study-reading"><h3>Lectura rápida</h3><ul>${reading}</ul></section>`;
+  const seasonalReading=data.seasons.map(row=>`<li>${esc(seasonalSentence(row,data))}</li>`).join("");
+  const thermalSummary=`<span>Amplitud térmica anual</span><b>${esc(data.left.city_name)} ${studyNumber(data.thermal?.left?.range)} °C · ${esc(data.right.city_name)} ${studyNumber(data.thermal?.right?.range)} °C</b>`;
+  $("city-study-output").innerHTML=`<div class="study-city-head">${panels}<div class="study-score"><b>${data.similarity_pct}%</b><span>afinidad con los parámetros actuales · ${esc(data.seasonal_alignment)}</span></div></div><section class="seasonal-overview"><div><h3>Radiografía estacional</h3><p class="study-caption">Las estaciones se toman de ${esc(data.left.city_name)}. En modo adaptativo, ${esc(data.right.city_name)} se compara con su estación equivalente.</p></div><div class="thermal-summary">${thermalSummary}</div></section><section class="study-reading seasonal-reading"><h3>Lectura por estación</h3><ul>${seasonalReading}</ul></section><section class="season-cards">${seasonCards}</section><div class="study-grid"><section><h3>Afinidad anual por dominio</h3>${domains}</section><section><h3>Resumen de afinidad por estación</h3>${seasons}</section></div><details class="annual-context"><summary>Contexto anual y promedios</summary><section class="annual-table-wrap"><h3>Valores anuales y diferencia</h3><table class="annual-table"><thead><tr><th>Variable</th><th>${esc(data.left.city_name)}</th><th>${esc(data.right.city_name)}</th><th>B − A</th></tr></thead><tbody>${annual}</tbody></table></section><section class="study-reading"><h3>Lectura anual</h3><ul>${reading}</ul></section></details>`;
 }
 async function runCityStudy(){
   if(!studyCities.left||!studyCities.right)return setStatus("Elige ambas urbes desde los resultados de búsqueda.",true);

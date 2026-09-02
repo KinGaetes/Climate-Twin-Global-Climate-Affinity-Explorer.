@@ -462,15 +462,42 @@ function annualMetricsFor(idx) {
   }));
 }
 
+function thermalStatsForBuckets(idx, buckets, shift = 0) {
+  const offset = idx * cfg.feature_dim;
+  // The temperature fingerprint uses half-degree Celsius steps. Keeping this
+  // conversion here gives the study real seasonal temperatures, rather than
+  // an opaque normalized score.
+  const values = buckets.map(bucket => features[offset + ((bucket + shift) % cfg.bucket_count)] / 2)
+    .filter(Number.isFinite);
+  if (!values.length) return {mean: null, min: null, max: null, range: null};
+  const sum = values.reduce((total, value) => total + value, 0);
+  const min = Math.min(...values), max = Math.max(...values);
+  return {mean: sum / values.length, min, max, range: max - min};
+}
+
+function annualThermalStats(idx, shift = 0) {
+  return thermalStatsForBuckets(idx, Array.from({length: cfg.bucket_count}, (_, bucket) => bucket), shift);
+}
+
 async function compareCities(leftIdx, rightIdx, mode, weights, season = "annual") {
   await Promise.all([light(), loadMetrics(), loadFeatures(), loadPositions()]);
   if (!Number.isInteger(leftIdx) || !Number.isInteger(rightIdx) || leftIdx < 0 || rightIdx < 0 || leftIdx >= cfg.city_count || rightIdx >= cfg.city_count || leftIdx === rightIdx) throw new Error("Elige dos urbes distintas.");
   const result = pairScore(leftIdx, rightIdx, mode, weights, season);
   const selectedBuckets = seasonBuckets(season, leftIdx);
-  const seasons = ["summer", "autumn", "winter", "spring"].map(id => ({
-    id,
-    score: pairScore(leftIdx, rightIdx, mode, weights, id).score
-  }));
+  const seasons = ["summer", "autumn", "winter", "spring"].map(id => {
+    const seasonResult = pairScore(leftIdx, rightIdx, mode, weights, id);
+    const buckets = seasonBuckets(id, leftIdx);
+    return {
+      id,
+      score: seasonResult.score,
+      seasonal_alignment: seasonResult.shift ? "hemisferio opuesto" : "mismo calendario",
+      thermal: {
+        left: thermalStatsForBuckets(leftIdx, buckets),
+        right: thermalStatsForBuckets(rightIdx, buckets, seasonResult.shift)
+      },
+      domains: explanation(leftIdx, rightIdx, seasonResult.shift, buckets)
+    };
+  });
   const leftMetrics = annualMetricsFor(leftIdx), rightMetrics = annualMetricsFor(rightIdx);
   const annual = leftMetrics.map((metric, index) => Object.assign(metric, {
     left: metric.value,
@@ -483,6 +510,10 @@ async function compareCities(leftIdx, rightIdx, mode, weights, season = "annual"
     left: detailLite(leftIdx), right: detailLite(rightIdx),
     domains: explanation(leftIdx, rightIdx, result.shift, selectedBuckets),
     seasons,
+    thermal: {
+      left: annualThermalStats(leftIdx),
+      right: annualThermalStats(rightIdx, result.shift)
+    },
     annual
   };
 }
