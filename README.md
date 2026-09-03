@@ -14,7 +14,7 @@ For the web experience, profiles are optimized into 26 biweekly periods per vari
 
 - Coverage: weekly aggregated weather observations from 2016 to 2025.
 - Scope: locations worldwide.
-- Source: [Global Weekly Weather Averages by City (2016-2025)](https://www.kaggle.com/datasets/quingaete/worldwide-average-climate-by-week-20162025), a dataset created and published by [Quin Gaete](https://www.kaggle.com/quingaete).
+- Source: [Global Weekly Weather Averages by City (2016-2025)](https://www.kaggle.com/datasets/quingaete/worldwide-average-climate-by-week-20162025), a dataset created and published by [Quin Gaete](https://www.kaggle.com/quingaete) (Myself).
 - Source dataset license: [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
 
 The files in `data/` are a compact, browser-ready version derived from the original dataset; they are not the raw Kaggle dataset.
