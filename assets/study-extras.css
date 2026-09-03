@@ -10,8 +10,8 @@
 .geo-overlay-controls input{margin:0;accent-color:#0aaeb4}
 .sidebar{position:relative;display:flex;flex-direction:column;overflow:hidden}
 .sidebar-inner{flex:1 1 auto;overflow:auto}
-.sidebar-signature{position:absolute;z-index:2;right:0;bottom:0;left:0;display:flex;height:104px;align-items:flex-end;justify-content:flex-end;padding:16px 18px 8px;border:0;background:linear-gradient(180deg,rgba(220,246,240,0) 0%,rgba(150,206,199,.05) 44%,rgba(48,112,118,.2) 100%);pointer-events:none}
-.sidebar-signature img{width:25px;height:25px;display:block;opacity:.78}
+.sidebar-signature{position:absolute;z-index:2;right:0;bottom:0;left:0;display:flex;height:112px;align-items:flex-end;justify-content:flex-end;padding:16px 18px 8px;border:0;background:linear-gradient(180deg,rgba(220,246,240,0) 0%,rgba(120,183,177,.1) 52%,rgba(36,103,111,.4) 100%);pointer-events:none}
+.sidebar-signature img{width:31px;height:31px;display:block;opacity:1;filter:drop-shadow(0 2px 2px rgba(13,73,83,.3))}
 .brand{width:min(280px,calc(100% - 620px));max-width:none;padding:11px 15px}
 .brand h1{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .brand p{line-height:1.35}
